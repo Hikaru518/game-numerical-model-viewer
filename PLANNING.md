@@ -9,6 +9,7 @@
   - 画布拖拽/缩放/适配（ReactFlow）
   - 右侧详情编辑（Object/Relationship）
   - 导入/导出 JSON + 校验（阻断式错误提示）
+  - 关系曲线控制点编辑（右键边添加控制点，最多 5 个；选中关系显示控制点；拖拽控制点调整曲线形状，释放时提交）
   - dirty 状态与离开页面提醒
 - **非目标（当前）**：
   - 复杂公式解析/执行
@@ -31,9 +32,11 @@
   - 导入/导出、创建/更新/删除、fitView/focusSelection 等交互都在这里编排
 - **数据模型**：`[src/model/types.ts](src/model/types.ts)`
   - `ModelData` / `ObjectEntity` / `Relationship` / `ValidationIssue` 等
+  - `Relationship.curvePoints?: { x: number; y: number }[]`：用户控制点（最多 5 个），用于自定义关系边的曲线形状
 - **校验与兼容**：`[src/model/validation.ts](src/model/validation.ts)`
   - `validateModel(unknown)`：导入前校验（结构/类型/引用/枚举合法性）
   - `validateForExport(ModelData)`：导出前更严格校验（例如 Object.name 不能为空）
+  - Relationship 的 `curvePoints`（如存在）会被校验：必须为数组、长度 ≤ 5、每个点的 `x/y` 必须是有限数字
   - `coerceModel(ModelData)`：补齐缺省字段（兼容旧/脏数据）
 - **布局**：`[src/model/layout.ts](src/model/layout.ts)`
   - `autoLayout(objects)`：导入后给对象生成确定性网格坐标
@@ -45,6 +48,8 @@
   - 画布：`[src/components/Canvas.tsx](src/components/Canvas.tsx)`
   - Object 节点：`[src/components/ObjectNode.tsx](src/components/ObjectNode.tsx)`
   - Relationship 边：`[src/components/RelationshipEdge.tsx](src/components/RelationshipEdge.tsx)`
+  - 关系曲线路径计算：`[src/components/relationshipCurvePath.ts](src/components/relationshipCurvePath.ts)`
+    - `buildCatmullRomPath(points)`：将控制点序列转换为 Catmull-Rom 样条 SVG 路径
   - 侧栏编辑：`[src/components/SidePanel.tsx](src/components/SidePanel.tsx)`
   - 顶栏操作：`[src/components/TopBar.tsx](src/components/TopBar.tsx)`
   - 错误弹窗：`[src/components/ErrorModal.tsx](src/components/ErrorModal.tsx)`
@@ -87,6 +92,12 @@
   - 点击画布空白区域取消创建态（重置 `creatingRelationship/pendingFromId`）
   - **禁止自环**（fromId === toId）
   - **禁止同一对对象重复关系**（无向视角：A→B 与 B→A 也视为重复）
+- **关系曲线控制点**：
+  - 右键点击 Relationship 边 → “添加控制点”（最多 5 个，超过时弹窗提示）
+  - 选中 Relationship 时显示其控制点（蓝色圆点）
+  - 左键拖拽控制点可调整曲线形状，释放时提交位置变更（`dirty=true`）
+  - 右键点击控制点 → “删除控制点”
+  - 曲线使用 Catmull-Rom 样条平滑连接；起点/终点由 fromId/toId 对应节点位置决定；控制点持久化在 `Relationship.curvePoints`
 - **删除**：
   - 删除 Object 前必须确保没有任何 Relationship 引用它（否则阻断并提示先删关系）
 - **离开页面提醒**：
