@@ -178,6 +178,32 @@ function App() {
     });
   }, [model.objects.length]);
 
+  const createObjectAt = useCallback((position: { x: number; y: number }) => {
+    const id = createId("obj");
+    const newObject: ObjectEntity = {
+      id,
+      name: "未命名对象",
+      description: "",
+      attributes: [],
+    };
+    setModel((prev) => ({
+      ...prev,
+      objects: [...prev.objects, newObject],
+    }));
+    setPositions((prev) => ({
+      ...prev,
+      [id]: position,
+    }));
+    setSelection({ type: "object", id });
+    setDirty(true);
+  }, []);
+
+  const startRelationshipFrom = useCallback((id: string) => {
+    setSelection({ type: "object", id });
+    setCreatingRelationship(true);
+    setPendingFromId(id);
+  }, []);
+
   const createRelationship = useCallback(
     (fromId: string, toId: string) => {
       if (fromId === toId) {
@@ -432,11 +458,6 @@ function App() {
           pendingFromId={pendingFromId}
           onImport={openFileDialog}
           onExport={handleExport}
-          onCreateObject={createObject}
-          onToggleRelationship={() => {
-            setCreatingRelationship((prev) => !prev);
-            setPendingFromId(null);
-          }}
           onFitView={handleFitView}
           onFocusSelection={focusSelection}
         />
@@ -457,11 +478,13 @@ function App() {
               setCreatingRelationship(false);
               setPendingFromId(null);
             }}
+            onStartRelationshipFrom={startRelationshipFrom}
             onMoveObject={(id, position) => {
               setPositions((prev) => ({ ...prev, [id]: position }));
               setDirty(true);
             }}
             onInit={setFlowInstance}
+            onCreateObjectAt={createObjectAt}
             onRequestImport={openFileDialog}
             onRequestNew={createObject}
           />

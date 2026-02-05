@@ -77,8 +77,14 @@
 
 ## 关键交互约束（不可破坏的行为）
 
+- **对象创建**：
+  - 右键画布空白区域 → “新建 Object”
+  - 新对象位置应靠近鼠标（将 screen 坐标投影到 flow 坐标）
+  - 创建后自动选中并 `dirty=true`
 - **关系创建**：
-  - 两次点击选起点/终点（`creatingRelationship` + `pendingFromId`）
+  - 右键起点 Object → “新建 Relationship” 进入创建态（`creatingRelationship=true` + `pendingFromId=<id>`；起点节点显示虚线）
+  - 左键点击终点 Object 创建 Relationship（默认单箭头：起点 → 终点）
+  - 点击画布空白区域取消创建态（重置 `creatingRelationship/pendingFromId`）
   - **禁止自环**（fromId === toId）
   - **禁止同一对对象重复关系**（无向视角：A→B 与 B→A 也视为重复）
 - **删除**：
