@@ -63,4 +63,6 @@ npm run dev
 - `npm run build`：构建
 - `npm run preview`：预览构建产物
 - `npm run lint`：Lint
+- `npm run typecheck`：TypeScript 类型检查
+- `npm run validate`：一键验证（lint + tests + build）
 

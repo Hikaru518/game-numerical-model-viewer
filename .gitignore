@@ -25,3 +25,6 @@ dist-ssr
 
 # design docs
 design_docs/
+
+# cursor
+.cursor/worktrees.json

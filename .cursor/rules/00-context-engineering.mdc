@@ -1,0 +1,33 @@
+---
+description: Context Engineering workflow + validation gates (always apply)
+alwaysApply: true
+---
+
+# Context Engineering（本仓库）
+
+## 开工必读
+
+- 先读 `PLANNING.md`（架构/不可破坏行为/现有模式）
+- 再看 `TASK.md`（是否已有任务；没有就补到 Active）
+
+## 标准工作流（不要跳步）
+
+- **读需求**：读取 `INITIAL.md` 需求文件，如果有疑问请提出
+- **生成 PRP**：基于 `PRPs/templates/prp_base_web.md` 生成 `PRPs/<feature>.md`
+- **执行 PRP**：按 PRP 的任务列表实现，并在每个 gate 失败时迭代修复
+
+## 验证门禁（必须可执行）
+
+- 优先：`npm run validate`
+- 需要分解排查时：
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm test -- --run`
+  - `npm run build`
+
+## 代码库约束（高优先级）
+
+- **复用现有模式**：不要发明新架构/新测试范式
+- **校验错误呈现**：沿用 `issues[]` 汇总（`fieldPath`/`id`/`suggestion`），不要改成 throw 流程
+- **依赖控制**：无必要不新增依赖；若必须新增，解释原因与替代方案
+

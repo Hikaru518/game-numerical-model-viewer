@@ -1,0 +1,31 @@
+---
+description: TypeScript/React implementation & testing conventions
+globs: **/*.{ts,tsx}
+alwaysApply: false
+---
+
+# TypeScript / React 约定（本仓库）
+
+## TypeScript
+
+- 优先使用 `import type` 做类型导入（仓库内已广泛采用）
+- 保持 `strict` 语义：不要用 `any` 逃逸（测试里的 `any` 仅限 mock 场景）
+- 状态更新保持不可变（`setState(prev => ...)`）
+
+## React 组件组织
+
+- 顶层编排在 `src/App.tsx`（model/positions/selection/dirty 等），组件尽量“纯渲染 + 回调上报”
+- 避免引入新的状态管理方案（除非 PRP 明确要求）
+- ReactFlow 相关交互优先沿用 `src/components/Canvas.tsx` 的结构与写法
+
+## 校验与错误展示
+
+- 导入校验：`validateModel(unknown)` → 返回 `issues[]`，由 `ErrorModal` 展示
+- 导出校验：`validateForExport(ModelData)` 阻断导出并提示
+
+## 测试（Vitest + Testing Library）
+
+- 用户可见的功能优先补“集成流测试”（轻量 E2E）
+- ReactFlow 测试优先复用 `src/components/__tests__/app.integration.test.tsx` 的 `vi.mock("reactflow")` 模式
+- 新增逻辑至少覆盖：happy path / edge case / failure case
+
