@@ -38,6 +38,8 @@ type CanvasProps = {
   onRequestImport: () => void;
   onRequestNew: () => void;
   onReconnectRelationship: (edgeId: string, connection: Connection) => boolean;
+  onDeselect: () => void;
+  onConnect: (connection: Connection) => void;
 };
 
 type HoveredEdge = {
@@ -90,6 +92,8 @@ const Canvas = ({
   onRequestImport,
   onRequestNew,
   onReconnectRelationship,
+  onDeselect,
+  onConnect,
 }: CanvasProps) => {
   const [hoveredEdge, setHoveredEdge] = useState<HoveredEdge | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -223,6 +227,7 @@ const Canvas = ({
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        onConnect={onConnect}
         edgesUpdatable
         edgeUpdaterRadius={18}
         onInit={(instance) => {
@@ -274,6 +279,7 @@ const Canvas = ({
           if (creatingRelationship) {
             onCancelCreateRelationship();
           }
+          onDeselect();
         }}
         onPaneContextMenu={(event) => {
           event.preventDefault();

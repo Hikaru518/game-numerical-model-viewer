@@ -45,6 +45,7 @@ vi.mock("reactflow", async () => {
     onPaneClick?: () => void;
     onPaneContextMenu?: (event: MouseEvent) => void;
     onNodeContextMenu?: (event: MouseEvent, node: MockNode) => void;
+    onConnect?: (connection: { source?: string | null; target?: string | null; sourceHandle?: string | null; targetHandle?: string | null }) => void;
     children?: ReactNode;
   };
 
@@ -60,6 +61,7 @@ vi.mock("reactflow", async () => {
     onPaneClick,
     onPaneContextMenu,
     onNodeContextMenu,
+    onConnect,
     children,
   }: ReactFlowProps) => {
     useEffect(() => {
@@ -75,6 +77,7 @@ vi.mock("reactflow", async () => {
         onPaneClick,
         onPaneContextMenu,
         onNodeContextMenu,
+        onConnect,
         children,
       };
     }, [
@@ -89,6 +92,7 @@ vi.mock("reactflow", async () => {
       onPaneClick,
       onPaneContextMenu,
       onNodeContextMenu,
+      onConnect,
       children,
     ]);
 
@@ -177,6 +181,16 @@ vi.mock("reactflow", async () => {
     latestProps.onEdgeUpdateEnd?.({}, edge);
   };
 
+  const __simulateConnect = (connection: {
+    source?: string | null;
+    target?: string | null;
+    sourceHandle?: string | null;
+    targetHandle?: string | null;
+  }) => {
+    if (!latestProps) throw new Error("ReactFlow props not captured yet");
+    latestProps.onConnect?.(connection);
+  };
+
   return {
     __esModule: true,
     default: ReactFlow,
@@ -184,6 +198,7 @@ vi.mock("reactflow", async () => {
     __getLatestEdges,
     __simulateEdgeReconnect,
     __simulateEdgeReconnectCancel,
+    __simulateConnect,
     ReactFlowProvider: ({ children }: { children?: ReactNode }) => (
       <div data-testid="reactflow-provider">{children}</div>
     ),
@@ -449,5 +464,116 @@ describe("App integration flows", () => {
     const rel2 = rf.__getLatestEdges().find((e) => e.id === "rel_uuid-5");
     expect(rel2?.source).toBe("obj_uuid-2");
     expect(rel2?.target).toBe("obj_uuid-3");
+  });
+
+  it("deselects object when clicking on pane", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Create an object
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 300, clientY: 200 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    // Object should be selected (check side panel shows object details)
+    expect(screen.getByPlaceholderText("填写对象名称")).toBeInTheDocument();
+
+    // Click on pane (reactflow container)
+    await user.click(screen.getByTestId("reactflow"));
+
+    // Side panel should no longer show object details
+    expect(screen.queryByPlaceholderText("填写对象名称")).not.toBeInTheDocument();
+  });
+
+  it("creates a relationship by dragging connection between nodes", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Create two objects
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 520, clientY: 220 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    // Simulate drag connection from obj_uuid-1 to obj_uuid-2
+    const rf = (await import("reactflow")) as unknown as {
+      __simulateConnect: (connection: { source?: string | null; target?: string | null; sourceHandle?: string | null; targetHandle?: string | null }) => void;
+    };
+
+    rf.__simulateConnect({
+      source: "obj_uuid-1",
+      target: "obj_uuid-2",
+      sourceHandle: "source-right",
+      targetHandle: "target-left",
+    });
+
+    // Relationship should be created
+    expect(await screen.findByText("未命名关系")).toBeInTheDocument();
+    expect(screen.getByTestId("edge-rel_uuid-3")).toBeInTheDocument();
+  });
+
+  it("blocks self connection when dragging", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Create an object
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 300, clientY: 200 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    // Try to connect object to itself
+    const rf = (await import("reactflow")) as unknown as {
+      __simulateConnect: (connection: { source?: string | null; target?: string | null; sourceHandle?: string | null; targetHandle?: string | null }) => void;
+    };
+
+    rf.__simulateConnect({
+      source: "obj_uuid-1",
+      target: "obj_uuid-1",
+      sourceHandle: "source-right",
+      targetHandle: "target-left",
+    });
+
+    // Should show error modal
+    expect(await screen.findByText("无法创建关系")).toBeInTheDocument();
+    expect(await screen.findByText("起点与终点不能相同")).toBeInTheDocument();
+  });
+
+  it("blocks duplicate relationship when dragging (undirected)", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Create two objects
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 520, clientY: 220 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    const rf = (await import("reactflow")) as unknown as {
+      __simulateConnect: (connection: { source?: string | null; target?: string | null; sourceHandle?: string | null; targetHandle?: string | null }) => void;
+    };
+
+    // Create first relationship: obj1 -> obj2
+    rf.__simulateConnect({
+      source: "obj_uuid-1",
+      target: "obj_uuid-2",
+      sourceHandle: "source-right",
+      targetHandle: "target-left",
+    });
+
+    expect(await screen.findByText("未命名关系")).toBeInTheDocument();
+
+    // Close any modal
+    const closeButton = screen.queryByRole("button", { name: "关闭" });
+    if (closeButton) await user.click(closeButton);
+
+    // Try to create duplicate: obj2 -> obj1 (should be blocked as undirected duplicate)
+    rf.__simulateConnect({
+      source: "obj_uuid-2",
+      target: "obj_uuid-1",
+      sourceHandle: "source-left",
+      targetHandle: "target-right",
+    });
+
+    // Should show error modal for duplicate
+    expect(await screen.findByText("无法创建关系")).toBeInTheDocument();
+    expect(await screen.findByText("同一对对象之间已存在关系")).toBeInTheDocument();
   });
 });

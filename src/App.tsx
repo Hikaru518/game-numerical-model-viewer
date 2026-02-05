@@ -219,8 +219,13 @@ function App() {
     setPendingFromId(id);
   }, []);
 
-  const createRelationship = useCallback(
-    (fromId: string, toId: string) => {
+  const createRelationshipWithHandles = useCallback(
+    (
+      fromId: string,
+      toId: string,
+      fromHandle: HandleLocation = "right",
+      toHandle: HandleLocation = "left"
+    ) => {
       if (fromId === toId) {
         setErrorModal({
           title: "无法创建关系",
@@ -232,7 +237,7 @@ function App() {
           ],
           secondaryAction: { label: "关闭", onClick: () => setErrorModal(null) },
         });
-        return;
+        return false;
       }
 
       const exists = model.relationships.some(
@@ -251,7 +256,7 @@ function App() {
           ],
           secondaryAction: { label: "关闭", onClick: () => setErrorModal(null) },
         });
-        return;
+        return false;
       }
 
       const id = createId("rel");
@@ -261,8 +266,8 @@ function App() {
         description: "",
         fromId,
         toId,
-        fromHandle: "right",
-        toHandle: "left",
+        fromHandle,
+        toHandle,
         arrowType: "single",
         label: "",
       };
@@ -274,8 +279,30 @@ function App() {
       setDirty(true);
       setCreatingRelationship(false);
       setPendingFromId(null);
+      return true;
     },
     [model.relationships]
+  );
+
+  const createRelationship = useCallback(
+    (fromId: string, toId: string) => {
+      createRelationshipWithHandles(fromId, toId, "right", "left");
+    },
+    [createRelationshipWithHandles]
+  );
+
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      const fromId = connection.source;
+      const toId = connection.target;
+      if (!fromId || !toId) return;
+
+      const fromHandle = parseHandleLocation(connection.sourceHandle, "source-") ?? "right";
+      const toHandle = parseHandleLocation(connection.targetHandle, "target-") ?? "left";
+
+      createRelationshipWithHandles(fromId, toId, fromHandle, toHandle);
+    },
+    [createRelationshipWithHandles]
   );
 
   const updateObject = useCallback((id: string, updater: Partial<ObjectEntity>) => {
@@ -506,6 +533,8 @@ function App() {
     []
   );
 
+  const handleDeselect = useCallback(() => setSelection(null), []);
+
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       if (!dirty) return;
@@ -576,6 +605,8 @@ function App() {
             onRequestImport={openFileDialog}
             onRequestNew={createObject}
             onReconnectRelationship={reconnectRelationship}
+            onDeselect={handleDeselect}
+            onConnect={handleConnect}
           />
           <SidePanel
             objects={model.objects}
