@@ -191,6 +191,7 @@ vi.mock("reactflow", async () => {
     );
   };
 
+  const __getLatestNodes = () => latestProps?.nodes ?? [];
   const __getLatestEdges = () => latestProps?.edges ?? [];
 
   const __simulateEdgeReconnect = (params: {
@@ -230,6 +231,7 @@ vi.mock("reactflow", async () => {
     __esModule: true,
     default: ReactFlow,
     ReactFlow,
+    __getLatestNodes,
     __getLatestEdges,
     __simulateEdgeReconnect,
     __simulateEdgeReconnectCancel,
@@ -276,6 +278,92 @@ describe("App integration flows", () => {
 
     expect(clickSpy).toHaveBeenCalled();
     clickSpy.mockRestore();
+  });
+
+  it("exports positions into JSON", async () => {
+    const user = userEvent.setup();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    const urlSpy = vi
+      .spyOn(URL, "createObjectURL")
+      .mockImplementation(() => "blob:mock");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    render(<App />);
+
+    // Create two objects at deterministic coordinates
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 300, clientY: 200 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 600, clientY: 400 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    await user.click(screen.getByRole("button", { name: "导出 JSON" }));
+
+    const blob = urlSpy.mock.calls[0]?.[0] as Blob | undefined;
+    expect(blob).toBeInstanceOf(Blob);
+    const readBlobText = async (value: Blob): Promise<string> => {
+      if (typeof (value as Blob & { text?: unknown }).text === "function") {
+        return await value.text();
+      }
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+        reader.onerror = () => reject(reader.error ?? new Error("FileReader error"));
+        reader.readAsText(value);
+      });
+    };
+
+    const text = await readBlobText(blob!);
+    const parsed = JSON.parse(text) as { positions?: Record<string, { x: number; y: number }> };
+
+    // Canvas subtracts (110,60) from screenToFlowPosition for createObjectAt
+    expect(parsed.positions?.["obj_uuid-1"]).toEqual({ x: 190, y: 140 });
+    expect(parsed.positions?.["obj_uuid-2"]).toEqual({ x: 490, y: 340 });
+
+    clickSpy.mockRestore();
+    urlSpy.mockRestore();
+  });
+
+  it("imports positions and restores node layout (with fallback autoLayout)", async () => {
+    render(<App />);
+
+    const rf = (await import("reactflow")) as unknown as {
+      __getLatestNodes: () => Array<{ id: string; position: { x: number; y: number } }>;
+    };
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(input).not.toBeNull();
+
+    const modelWithPositions = {
+      schemaVersion: 1,
+      objects: [
+        { id: "obj_a", name: "对象A", description: "", attributes: [] },
+        { id: "obj_b", name: "对象B", description: "", attributes: [] },
+      ],
+      relationships: [],
+      positions: {
+        obj_a: { x: 500, y: 600 },
+      },
+    };
+
+    const file = new File([JSON.stringify(modelWithPositions)], "model.json", {
+      type: "application/json",
+    });
+
+    fireEvent.change(input!, { target: { files: [file] } });
+
+    await waitFor(() => {
+      const nodes = rf.__getLatestNodes();
+      expect(nodes.some((n) => n.id === "obj_a")).toBe(true);
+      expect(nodes.some((n) => n.id === "obj_b")).toBe(true);
+    });
+
+    const nodes = rf.__getLatestNodes();
+    const objA = nodes.find((n) => n.id === "obj_a")!;
+    const objB = nodes.find((n) => n.id === "obj_b")!;
+    expect(objA.position).toEqual({ x: 500, y: 600 });
+    // autoLayout fallback for 2 objects => obj_b at (360,80)
+    expect(objB.position).toEqual({ x: 360, y: 80 });
   });
 
   it("creates an object and updates its name", async () => {

@@ -27,6 +27,50 @@ describe("validateModel", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("accepts valid positions for known object ids", () => {
+    const result = validateModel({
+      ...baseModel,
+      positions: {
+        obj_a: { x: 120, y: 240 },
+        obj_b: { x: 360, y: 80 },
+      },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("ignores positions entries for unknown object ids", () => {
+    const result = validateModel({
+      ...baseModel,
+      positions: {
+        obj_a: { x: 120, y: 240 },
+        unknown_obj: { x: 1, y: 2 },
+      },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects invalid positions shape and invalid x/y types", () => {
+    const shape = validateModel({
+      ...baseModel,
+      positions: [],
+    });
+    expect(shape.ok).toBe(false);
+    expect(shape.issues.some((issue) => issue.message.includes("positions 必须为对象映射"))).toBe(
+      true
+    );
+
+    const type = validateModel({
+      ...baseModel,
+      positions: {
+        obj_a: { x: "bad", y: 10 },
+      },
+    });
+    expect(type.ok).toBe(false);
+    expect(type.issues.some((issue) => issue.message.includes("positions.x 必须为有限数字"))).toBe(
+      true
+    );
+  });
+
   it("rejects non-object root", () => {
     const result = validateModel("invalid" as unknown);
     expect(result.ok).toBe(false);
