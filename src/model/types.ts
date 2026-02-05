@@ -1,5 +1,7 @@
 export type ArrowType = "single" | "double" | "none";
 
+export type HandleLocation = "left" | "right" | "top" | "bottom";
+
 export type Attribute = {
   name: string;
   description: string;
@@ -19,6 +21,8 @@ export type Relationship = {
   description: string;
   fromId: string;
   toId: string;
+  fromHandle?: HandleLocation;
+  toHandle?: HandleLocation;
   arrowType: ArrowType;
   label: string;
 };

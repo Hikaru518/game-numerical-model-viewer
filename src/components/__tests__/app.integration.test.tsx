@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import App from "../../App";
@@ -8,13 +8,21 @@ vi.mock("reactflow", async () => {
   const React = await import("react");
   const { useEffect } = React;
 
+  let latestProps: ReactFlowProps | null = null;
+
   type MockNode = {
     id: string;
     position: { x: number; y: number };
     data?: { object?: { name?: string }; isPendingSource?: boolean };
   };
 
-  type MockEdge = { id: string };
+  type MockEdge = {
+    id: string;
+    source?: string;
+    target?: string;
+    sourceHandle?: string;
+    targetHandle?: string;
+  };
 
   type MockReactFlowInstance = {
     fitView: () => void;
@@ -31,6 +39,9 @@ vi.mock("reactflow", async () => {
     onInit?: (instance: MockReactFlowInstance) => void;
     onNodeClick?: (event: unknown, node: MockNode) => void;
     onEdgeClick?: (event: unknown, edge: MockEdge) => void;
+    onEdgeUpdateStart?: (...args: unknown[]) => void;
+    onEdgeUpdate?: (oldEdge: MockEdge, newConnection: { source?: string | null; target?: string | null; sourceHandle?: string | null; targetHandle?: string | null }) => void;
+    onEdgeUpdateEnd?: (...args: unknown[]) => void;
     onPaneClick?: () => void;
     onPaneContextMenu?: (event: MouseEvent) => void;
     onNodeContextMenu?: (event: MouseEvent, node: MockNode) => void;
@@ -43,11 +54,44 @@ vi.mock("reactflow", async () => {
     onInit,
     onNodeClick,
     onEdgeClick,
+    onEdgeUpdateStart,
+    onEdgeUpdate,
+    onEdgeUpdateEnd,
     onPaneClick,
     onPaneContextMenu,
     onNodeContextMenu,
     children,
   }: ReactFlowProps) => {
+    useEffect(() => {
+      latestProps = {
+        nodes,
+        edges,
+        onInit,
+        onNodeClick,
+        onEdgeClick,
+        onEdgeUpdateStart,
+        onEdgeUpdate,
+        onEdgeUpdateEnd,
+        onPaneClick,
+        onPaneContextMenu,
+        onNodeContextMenu,
+        children,
+      };
+    }, [
+      nodes,
+      edges,
+      onInit,
+      onNodeClick,
+      onEdgeClick,
+      onEdgeUpdateStart,
+      onEdgeUpdate,
+      onEdgeUpdateEnd,
+      onPaneClick,
+      onPaneContextMenu,
+      onNodeContextMenu,
+      children,
+    ]);
+
     useEffect(() => {
       if (!onInit) return;
       onInit({
@@ -108,10 +152,38 @@ vi.mock("reactflow", async () => {
     );
   };
 
+  const __getLatestEdges = () => latestProps?.edges ?? [];
+
+  const __simulateEdgeReconnect = (params: {
+    edgeId: string;
+    connection: {
+      source?: string | null;
+      target?: string | null;
+      sourceHandle?: string | null;
+      targetHandle?: string | null;
+    };
+  }) => {
+    if (!latestProps) throw new Error("ReactFlow props not captured yet");
+    const edge = (latestProps.edges ?? []).find((e) => e.id === params.edgeId) ?? { id: params.edgeId };
+    latestProps.onEdgeUpdateStart?.({}, edge);
+    latestProps.onEdgeUpdate?.(edge, params.connection);
+    latestProps.onEdgeUpdateEnd?.({}, edge);
+  };
+
+  const __simulateEdgeReconnectCancel = (edgeId: string) => {
+    if (!latestProps) throw new Error("ReactFlow props not captured yet");
+    const edge = (latestProps.edges ?? []).find((e) => e.id === edgeId) ?? { id: edgeId };
+    latestProps.onEdgeUpdateStart?.({}, edge);
+    latestProps.onEdgeUpdateEnd?.({}, edge);
+  };
+
   return {
     __esModule: true,
     default: ReactFlow,
     ReactFlow,
+    __getLatestEdges,
+    __simulateEdgeReconnect,
+    __simulateEdgeReconnectCancel,
     ReactFlowProvider: ({ children }: { children?: ReactNode }) => (
       <div data-testid="reactflow-provider">{children}</div>
     ),
@@ -231,5 +303,151 @@ describe("App integration flows", () => {
     await user.click(screen.getByRole("button", { name: "删除" }));
 
     expect(screen.queryByTestId("node-obj_uuid-1")).not.toBeInTheDocument();
+  });
+
+  it("reconnects relationship endpoints (handle change + target change) and blocks invalid reconnect", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 520, clientY: 220 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 700, clientY: 260 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    fireEvent.contextMenu(screen.getByTestId("node-obj_uuid-1"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Relationship" }));
+    await user.click(screen.getByTestId("node-obj_uuid-2"));
+
+    const rf = (await import("reactflow")) as unknown as {
+      __getLatestEdges: () => Array<{ id: string; source?: string; target?: string; sourceHandle?: string; targetHandle?: string }>;
+      __simulateEdgeReconnect: (params: { edgeId: string; connection: { source?: string | null; target?: string | null; sourceHandle?: string | null; targetHandle?: string | null } }) => void;
+    };
+
+    // Change source anchor from default right -> top (same objects)
+    rf.__simulateEdgeReconnect({
+      edgeId: "rel_uuid-4",
+      connection: {
+        source: "obj_uuid-1",
+        target: "obj_uuid-2",
+        sourceHandle: "source-top",
+        targetHandle: "target-left",
+      },
+    });
+
+    await waitFor(() => {
+      const afterHandleChange = rf.__getLatestEdges().find((e) => e.id === "rel_uuid-4");
+      expect(afterHandleChange?.sourceHandle).toBe("source-top");
+      expect(afterHandleChange?.targetHandle).toBe("target-left");
+    });
+
+    // Change target object to obj_uuid-3
+    rf.__simulateEdgeReconnect({
+      edgeId: "rel_uuid-4",
+      connection: {
+        source: "obj_uuid-1",
+        target: "obj_uuid-3",
+        sourceHandle: "source-top",
+        targetHandle: "target-left",
+      },
+    });
+
+    await waitFor(() => {
+      const afterTargetChange = rf.__getLatestEdges().find((e) => e.id === "rel_uuid-4");
+      expect(afterTargetChange?.target).toBe("obj_uuid-3");
+    });
+
+    // Invalid: self-loop should be blocked and not change
+    rf.__simulateEdgeReconnect({
+      edgeId: "rel_uuid-4",
+      connection: {
+        source: "obj_uuid-1",
+        target: "obj_uuid-1",
+        sourceHandle: "source-top",
+        targetHandle: "target-left",
+      },
+    });
+
+    expect(await screen.findByText("无法更新关系")).toBeInTheDocument();
+    expect(await screen.findByText("起点与终点不能相同")).toBeInTheDocument();
+
+    const afterBlocked = rf.__getLatestEdges().find((e) => e.id === "rel_uuid-4");
+    expect(afterBlocked?.target).toBe("obj_uuid-3");
+  });
+
+  it("does not change relationship when reconnect is cancelled (no snap target)", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 520, clientY: 220 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    fireEvent.contextMenu(screen.getByTestId("node-obj_uuid-1"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Relationship" }));
+    await user.click(screen.getByTestId("node-obj_uuid-2"));
+
+    const rf = (await import("reactflow")) as unknown as {
+      __getLatestEdges: () => Array<{ id: string; source?: string; target?: string; sourceHandle?: string; targetHandle?: string }>;
+      __simulateEdgeReconnectCancel: (edgeId: string) => void;
+    };
+
+    const before = rf.__getLatestEdges().find((e) => e.id === "rel_uuid-3");
+    expect(before?.source).toBe("obj_uuid-1");
+    expect(before?.target).toBe("obj_uuid-2");
+    expect(before?.sourceHandle).toBe("source-right");
+    expect(before?.targetHandle).toBe("target-left");
+
+    rf.__simulateEdgeReconnectCancel("rel_uuid-3");
+
+    const after = rf.__getLatestEdges().find((e) => e.id === "rel_uuid-3");
+    expect(after).toEqual(before);
+  });
+
+  it("blocks reconnect that would create a duplicate relationship pair (undirected)", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 520, clientY: 220 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 700, clientY: 260 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    // rel 1: obj1 -> obj2
+    fireEvent.contextMenu(screen.getByTestId("node-obj_uuid-1"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Relationship" }));
+    await user.click(screen.getByTestId("node-obj_uuid-2"));
+
+    // rel 2: obj2 -> obj3
+    fireEvent.contextMenu(screen.getByTestId("node-obj_uuid-2"), { clientX: 520, clientY: 220 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Relationship" }));
+    await user.click(screen.getByTestId("node-obj_uuid-3"));
+
+    const rf = (await import("reactflow")) as unknown as {
+      __getLatestEdges: () => Array<{ id: string; source?: string; target?: string; sourceHandle?: string; targetHandle?: string }>;
+      __simulateEdgeReconnect: (params: { edgeId: string; connection: { source?: string | null; target?: string | null; sourceHandle?: string | null; targetHandle?: string | null } }) => void;
+    };
+
+    // try to reconnect rel 2 to (obj1, obj2) => duplicate (undirected) with rel 1
+    rf.__simulateEdgeReconnect({
+      edgeId: "rel_uuid-5",
+      connection: {
+        source: "obj_uuid-1",
+        target: "obj_uuid-2",
+        sourceHandle: "source-right",
+        targetHandle: "target-left",
+      },
+    });
+
+    expect(await screen.findByText("无法更新关系")).toBeInTheDocument();
+    expect(await screen.findByText("同一对对象之间已存在关系")).toBeInTheDocument();
+
+    const rel2 = rf.__getLatestEdges().find((e) => e.id === "rel_uuid-5");
+    expect(rel2?.source).toBe("obj_uuid-2");
+    expect(rel2?.target).toBe("obj_uuid-3");
   });
 });

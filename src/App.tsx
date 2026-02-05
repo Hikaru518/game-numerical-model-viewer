@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactFlowInstance } from "reactflow";
 import { ReactFlowProvider } from "reactflow";
+import type { Connection } from "reactflow";
 import Canvas from "./components/Canvas";
 import ErrorModal from "./components/ErrorModal";
 import SidePanel from "./components/SidePanel";
 import TopBar from "./components/TopBar";
 import { autoLayout, nextGridPosition } from "./model/layout";
 import type {
+  HandleLocation,
   ModelData,
   ObjectEntity,
   Relationship,
@@ -31,6 +33,19 @@ const initialModel: ModelData = {
   schemaVersion: 1,
   objects: [],
   relationships: [],
+};
+
+const parseHandleLocation = (
+  raw: string | null | undefined,
+  prefix: "source-" | "target-"
+): HandleLocation | null => {
+  if (!raw) return null;
+  if (!raw.startsWith(prefix)) return null;
+  const maybe = raw.slice(prefix.length);
+  if (maybe === "left" || maybe === "right" || maybe === "top" || maybe === "bottom") {
+    return maybe;
+  }
+  return null;
 };
 
 function App() {
@@ -246,6 +261,8 @@ function App() {
         description: "",
         fromId,
         toId,
+        fromHandle: "right",
+        toHandle: "left",
         arrowType: "single",
         label: "",
       };
@@ -282,6 +299,77 @@ function App() {
       setDirty(true);
     },
     []
+  );
+
+  const reconnectRelationship = useCallback(
+    (edgeId: string, connection: Connection) => {
+      const current = model.relationships.find((rel) => rel.id === edgeId);
+      if (!current) return false;
+
+      const nextFromId = connection.source ?? current.fromId;
+      const nextToId = connection.target ?? current.toId;
+      if (!nextFromId || !nextToId) return false;
+
+      const nextFromHandle =
+        parseHandleLocation(connection.sourceHandle, "source-") ??
+        current.fromHandle ??
+        "right";
+      const nextToHandle =
+        parseHandleLocation(connection.targetHandle, "target-") ??
+        current.toHandle ??
+        "left";
+
+      const changed =
+        nextFromId !== current.fromId ||
+        nextToId !== current.toId ||
+        nextFromHandle !== (current.fromHandle ?? "right") ||
+        nextToHandle !== (current.toHandle ?? "left");
+      if (!changed) return false;
+
+      if (nextFromId === nextToId) {
+        setErrorModal({
+          title: "无法更新关系",
+          issues: [
+            {
+              message: "起点与终点不能相同",
+              suggestion: "请选择两个不同的对象",
+            },
+          ],
+          secondaryAction: { label: "关闭", onClick: () => setErrorModal(null) },
+        });
+        return false;
+      }
+
+      const exists = model.relationships.some(
+        (rel) =>
+          rel.id !== edgeId &&
+          ((rel.fromId === nextFromId && rel.toId === nextToId) ||
+            (rel.fromId === nextToId && rel.toId === nextFromId))
+      );
+      if (exists) {
+        setErrorModal({
+          title: "无法更新关系",
+          issues: [
+            {
+              message: "同一对对象之间已存在关系",
+              suggestion: "请编辑已有关系或选择其他对象",
+            },
+          ],
+          secondaryAction: { label: "关闭", onClick: () => setErrorModal(null) },
+        });
+        return false;
+      }
+
+      updateRelationship(edgeId, {
+        fromId: nextFromId,
+        toId: nextToId,
+        fromHandle: nextFromHandle,
+        toHandle: nextToHandle,
+      });
+      setSelection({ type: "relationship", id: edgeId });
+      return true;
+    },
+    [model.relationships, updateRelationship]
   );
 
   const addAttribute = useCallback((objectId: string) => {
@@ -487,6 +575,7 @@ function App() {
             onCreateObjectAt={createObjectAt}
             onRequestImport={openFileDialog}
             onRequestNew={createObject}
+            onReconnectRelationship={reconnectRelationship}
           />
           <SidePanel
             objects={model.objects}

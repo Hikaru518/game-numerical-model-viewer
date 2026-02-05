@@ -432,6 +432,14 @@
   right: -6px;
 }
 
+.node-handle.top {
+  top: -6px;
+}
+
+.node-handle.bottom {
+  bottom: -6px;
+}
+
 .edge-label {
   background: #ffffff;
   border-radius: 999px;

@@ -4,11 +4,12 @@ import ReactFlow, {
   Controls,
   EdgeLabelRenderer,
   MarkerType,
+  type Connection,
   type Node,
   type Edge,
   type ReactFlowInstance,
 } from "reactflow";
-import type { ObjectEntity, Relationship } from "../model/types";
+import type { HandleLocation, ObjectEntity, Relationship } from "../model/types";
 import ObjectNode from "./ObjectNode";
 import RelationshipEdge from "./RelationshipEdge";
 
@@ -36,6 +37,7 @@ type CanvasProps = {
   onCreateObjectAt: (position: { x: number; y: number }) => void;
   onRequestImport: () => void;
   onRequestNew: () => void;
+  onReconnectRelationship: (edgeId: string, connection: Connection) => boolean;
 };
 
 type HoveredEdge = {
@@ -47,6 +49,9 @@ type HoveredEdge = {
 
 const nodeTypes = { objectNode: ObjectNode };
 const edgeTypes = { relationship: RelationshipEdge };
+
+const toSourceHandleId = (location: HandleLocation) => `source-${location}`;
+const toTargetHandleId = (location: HandleLocation) => `target-${location}`;
 
 type ContextMenuState =
   | {
@@ -84,12 +89,14 @@ const Canvas = ({
   onCreateObjectAt,
   onRequestImport,
   onRequestNew,
+  onReconnectRelationship,
 }: CanvasProps) => {
   const [hoveredEdge, setHoveredEdge] = useState<HoveredEdge | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const edgeUpdateSuccessfulRef = useRef(false);
 
   const closeContextMenu = () => setContextMenu(null);
 
@@ -184,7 +191,9 @@ const Canvas = ({
           id: relationship.id,
           type: "relationship",
           source: relationship.fromId,
+          sourceHandle: toSourceHandleId(relationship.fromHandle ?? "right"),
           target: relationship.toId,
+          targetHandle: toTargetHandleId(relationship.toHandle ?? "left"),
           markerEnd,
           markerStart,
           data: {
@@ -214,11 +223,24 @@ const Canvas = ({
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        edgesUpdatable
+        edgeUpdaterRadius={18}
         onInit={(instance) => {
           flowInstanceRef.current = instance;
           onInit(instance);
         }}
         fitView
+        onEdgeUpdateStart={() => {
+          edgeUpdateSuccessfulRef.current = false;
+        }}
+        onEdgeUpdate={(oldEdge, newConnection) => {
+          const ok = onReconnectRelationship(oldEdge.id, newConnection);
+          edgeUpdateSuccessfulRef.current = ok;
+        }}
+        onEdgeUpdateEnd={() => {
+          // If update did not snap to a valid handle, ReactFlow will revert since edges are controlled.
+          edgeUpdateSuccessfulRef.current = false;
+        }}
         onNodeClick={(_, node) => {
           const nodeId = node.id;
           closeContextMenu();

@@ -140,6 +140,8 @@ describe("coerceModel", () => {
       description: "",
       fromId: "",
       toId: "",
+      fromHandle: "right",
+      toHandle: "left",
       arrowType: "single",
       label: "",
     });

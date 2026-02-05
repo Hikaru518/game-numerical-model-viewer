@@ -3,6 +3,7 @@ import type {
   ValidationIssue,
   ValidationResult,
   ArrowType,
+  HandleLocation,
 } from "./types";
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -12,6 +13,11 @@ const allowedArrowTypes = ["single", "double", "none"] as const satisfies readon
 
 const isArrowType = (value: string): value is ArrowType =>
   (allowedArrowTypes as readonly string[]).includes(value);
+
+const allowedHandleLocations = ["left", "right", "top", "bottom"] as const satisfies readonly HandleLocation[];
+
+const isHandleLocation = (value: string): value is HandleLocation =>
+  (allowedHandleLocations as readonly string[]).includes(value);
 
 const pushIssue = (
   issues: ValidationIssue[],
@@ -148,6 +154,8 @@ export const validateModel = (data: unknown): ValidationResult => {
       const description = rel.description;
       const fromId = rel.fromId;
       const toId = rel.toId;
+      const fromHandle = rel.fromHandle;
+      const toHandle = rel.toHandle;
       const arrowType = rel.arrowType;
       const label = rel.label;
 
@@ -220,6 +228,28 @@ export const validateModel = (data: unknown): ValidationResult => {
         );
       }
 
+      if (typeof fromHandle !== "undefined") {
+        if (typeof fromHandle !== "string" || !isHandleLocation(fromHandle)) {
+          pushIssue(
+            issues,
+            `fromHandle 必须为 ${allowedHandleLocations.join(" / ")}`,
+            `${basePath}.fromHandle`,
+            id as string
+          );
+        }
+      }
+
+      if (typeof toHandle !== "undefined") {
+        if (typeof toHandle !== "string" || !isHandleLocation(toHandle)) {
+          pushIssue(
+            issues,
+            `toHandle 必须为 ${allowedHandleLocations.join(" / ")}`,
+            `${basePath}.toHandle`,
+            id as string
+          );
+        }
+      }
+
       if (typeof label !== "string") {
         pushIssue(
           issues,
@@ -286,6 +316,14 @@ export const coerceModel = (data: ModelData): ModelData => ({
     description: rel.description ?? "",
     fromId: rel.fromId ?? "",
     toId: rel.toId ?? "",
+    fromHandle:
+      typeof rel.fromHandle === "string" && isHandleLocation(rel.fromHandle)
+        ? rel.fromHandle
+        : "right",
+    toHandle:
+      typeof rel.toHandle === "string" && isHandleLocation(rel.toHandle)
+        ? rel.toHandle
+        : "left",
     arrowType: rel.arrowType ?? "single",
     label: rel.label ?? "",
   })),
