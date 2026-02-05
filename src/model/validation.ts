@@ -42,6 +42,7 @@ export const validateModel = (data: unknown): ValidationResult => {
 
   const objects = data.objects;
   const relationships = data.relationships;
+  const positions = data.positions;
 
   if (!Array.isArray(objects)) {
     pushIssue(issues, "objects 必须为数组", "objects");
@@ -139,6 +140,52 @@ export const validateModel = (data: unknown): ValidationResult => {
       undefined,
       "请确保每个对象 id 唯一"
     );
+  }
+
+  if (typeof positions !== "undefined") {
+    if (!isObject(positions) || Array.isArray(positions)) {
+      pushIssue(
+        issues,
+        "positions 必须为对象映射（{ [objectId]: {x,y} }）",
+        "positions",
+        undefined,
+        "请删除该字段或提供位置映射"
+      );
+    } else {
+      Object.entries(positions).forEach(([objectId, rawPos]) => {
+        // Ignore unknown ids (forward-compat / partial layout exports).
+        if (!objectIds.has(objectId)) return;
+
+        const basePath = `positions.${objectId}`;
+        if (!isObject(rawPos)) {
+          pushIssue(
+            issues,
+            "positions[objectId] 必须为对象（{x,y}）",
+            basePath,
+            objectId,
+            "请为该对象提供 { x: number, y: number }"
+          );
+          return;
+        }
+
+        if (!isFiniteNumber(rawPos.x)) {
+          pushIssue(
+            issues,
+            "positions.x 必须为有限数字",
+            `${basePath}.x`,
+            objectId
+          );
+        }
+        if (!isFiniteNumber(rawPos.y)) {
+          pushIssue(
+            issues,
+            "positions.y 必须为有限数字",
+            `${basePath}.y`,
+            objectId
+          );
+        }
+      });
+    }
   }
 
   const relationshipIds = new Set<string>();

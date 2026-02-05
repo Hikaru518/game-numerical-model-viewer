@@ -37,9 +37,10 @@
   - `validateModel(unknown)`：导入前校验（结构/类型/引用/枚举合法性）
   - `validateForExport(ModelData)`：导出前更严格校验（例如 Object.name 不能为空）
   - Relationship 的 `curvePoints`（如存在）会被校验：必须为数组、长度 ≤ 5、每个点的 `x/y` 必须是有限数字
+  - 可选顶层 `positions?: Record<objectId, {x,y}>`：用于布局导入/导出；对已存在对象 id 校验 `x/y` 为有限数字（未知 id 忽略）
   - `coerceModel(ModelData)`：补齐缺省字段（兼容旧/脏数据）
 - **布局**：`[src/model/layout.ts](src/model/layout.ts)`
-  - `autoLayout(objects)`：导入后给对象生成确定性网格坐标
+  - `autoLayout(objects)`：导入时用于生成确定性网格坐标；当导入 JSON 没有/缺少 `positions` 时作为 fallback/补位
   - `nextGridPosition(index)`：新增对象时的默认放置位置
 - **工具函数**：`[src/model/utils.ts](src/model/utils.ts)`
   - `createId(prefix)`：默认使用 `crypto.randomUUID()`（测试中会 stub）
@@ -62,7 +63,9 @@
   - 读取文本 → `JSON.parse`
   - `validateModel(parsed)`：失败则弹 `ErrorModal` 并阻断导入
   - `coerceModel(...)`：补齐字段
-  - `setModel(coerced)` + `setPositions(autoLayout(objects))`
+  - `setModel(coerced)` + `baseLayout=autoLayout(objects)`：
+    - 若 JSON 含 `positions`，按 objectId 合并覆盖：`setPositions({ ...baseLayout, ...importedPositions })`
+    - 否则 `setPositions(baseLayout)`
   - 重置 `selection/dirty/creatingRelationship`，并触发一次 `fitView`
 
 ### 编辑
@@ -77,7 +80,7 @@
 
 - `App.handleExport()`：
   - `validateForExport(model)`：失败则弹 `ErrorModal` 并阻断导出
-  - `JSON.stringify` + `Blob` + `a.click()` 下载
+  - 导出 `{ ...model, schemaVersion: 1, positions }` 后 `JSON.stringify` + `Blob` + `a.click()` 下载
   - 成功后 `dirty=false`
 
 ## 关键交互约束（不可破坏的行为）

@@ -29,7 +29,6 @@ const TopBar = ({
         <div className="app-icon" />
         <div>
           <div className="app-title">数值模型可视化编辑器</div>
-          <div className="app-subtitle">导入/导出 JSON · 画布拖拽 · 影响链追踪</div>
         </div>
       </div>
       <div className="topbar-right">

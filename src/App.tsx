@@ -96,7 +96,21 @@ function App() {
 
   const handleImportFile = useCallback(
     async (file: File) => {
-      const text = await file.text();
+      const readBlobText = async (blob: Blob): Promise<string> => {
+        if (typeof (blob as Blob & { text?: unknown }).text === "function") {
+          return await (blob as Blob).text();
+        }
+        // Fallback for test env / older DOM shims.
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+          reader.onerror = () =>
+            reject(reader.error ?? new Error("无法读取文件内容（FileReader.onerror）"));
+          reader.readAsText(blob);
+        });
+      };
+
+      const text = await readBlobText(file);
       let parsed: unknown;
       try {
         parsed = JSON.parse(text);
@@ -130,7 +144,23 @@ function App() {
 
       const coerced = coerceModel(parsed as ModelData);
       setModel(coerced);
-      setPositions(autoLayout(coerced.objects));
+      const baseLayout = autoLayout(coerced.objects);
+      const rawPositions = (parsed as { positions?: unknown } | null)?.positions;
+      if (rawPositions && typeof rawPositions === "object" && !Array.isArray(rawPositions)) {
+        const knownIds = new Set(coerced.objects.map((o) => o.id));
+        const importedPositions: Record<string, { x: number; y: number }> = {};
+        Object.entries(rawPositions as Record<string, unknown>).forEach(([objectId, raw]) => {
+          if (!knownIds.has(objectId)) return;
+          if (!raw || typeof raw !== "object") return;
+          const maybe = raw as { x?: unknown; y?: unknown };
+          if (typeof maybe.x !== "number" || !Number.isFinite(maybe.x)) return;
+          if (typeof maybe.y !== "number" || !Number.isFinite(maybe.y)) return;
+          importedPositions[objectId] = { x: maybe.x, y: maybe.y };
+        });
+        setPositions({ ...baseLayout, ...importedPositions });
+      } else {
+        setPositions(baseLayout);
+      }
       setSelection(null);
       setDirty(false);
       setCreatingRelationship(false);
@@ -163,7 +193,7 @@ function App() {
       return;
     }
 
-    const exportData = { ...model, schemaVersion: 1 };
+    const exportData = { ...model, schemaVersion: 1, positions };
     const json = JSON.stringify(exportData, null, 2);
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -173,7 +203,7 @@ function App() {
     link.click();
     URL.revokeObjectURL(url);
     setDirty(false);
-  }, [model]);
+  }, [model, positions]);
 
   const createObject = useCallback(() => {
     const id = createId("obj");
