@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -30,8 +30,10 @@ type CanvasProps = {
   onCreateRelationship: (fromId: string, toId: string) => void;
   onPendingFrom: (id: string) => void;
   onCancelCreateRelationship: () => void;
+  onStartRelationshipFrom: (id: string) => void;
   onMoveObject: (id: string, position: { x: number; y: number }) => void;
   onInit: (instance: ReactFlowInstance) => void;
+  onCreateObjectAt: (position: { x: number; y: number }) => void;
   onRequestImport: () => void;
   onRequestNew: () => void;
 };
@@ -46,6 +48,23 @@ type HoveredEdge = {
 const nodeTypes = { objectNode: ObjectNode };
 const edgeTypes = { relationship: RelationshipEdge };
 
+type ContextMenuState =
+  | {
+      kind: "pane";
+      left: number;
+      top: number;
+      clientX: number;
+      clientY: number;
+    }
+  | {
+      kind: "object";
+      objectId: string;
+      left: number;
+      top: number;
+      clientX: number;
+      clientY: number;
+    };
+
 const Canvas = ({
   objects,
   relationships,
@@ -59,12 +78,77 @@ const Canvas = ({
   onCreateRelationship,
   onPendingFrom,
   onCancelCreateRelationship,
+  onStartRelationshipFrom,
   onMoveObject,
   onInit,
+  onCreateObjectAt,
   onRequestImport,
   onRequestNew,
 }: CanvasProps) => {
   const [hoveredEdge, setHoveredEdge] = useState<HoveredEdge | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
+
+  const closeContextMenu = () => setContextMenu(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        closeContextMenu();
+        return;
+      }
+      if (menuRef.current?.contains(target)) return;
+      closeContextMenu();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeContextMenu();
+        if (creatingRelationship) onCancelCreateRelationship();
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [contextMenu, creatingRelationship, onCancelCreateRelationship]);
+
+  const openContextMenu = (
+    next:
+      | { kind: "pane"; clientX: number; clientY: number }
+      | { kind: "object"; objectId: string; clientX: number; clientY: number }
+  ) => {
+    const shell = shellRef.current;
+    const bounds = shell?.getBoundingClientRect();
+    const left = bounds ? next.clientX - bounds.left : next.clientX;
+    const top = bounds ? next.clientY - bounds.top : next.clientY;
+    setContextMenu({ ...next, left, top });
+  };
+
+  const resolveFlowPosition = (clientX: number, clientY: number) => {
+    const bounds = shellRef.current?.getBoundingClientRect();
+    const local = bounds ? { x: clientX - bounds.left, y: clientY - bounds.top } : { x: clientX, y: clientY };
+    const instance = flowInstanceRef.current as unknown as {
+      screenToFlowPosition?: (pos: { x: number; y: number }) => { x: number; y: number };
+      project?: (pos: { x: number; y: number }) => { x: number; y: number };
+    } | null;
+
+    if (instance?.screenToFlowPosition) {
+      return instance.screenToFlowPosition({ x: clientX, y: clientY });
+    }
+    if (instance?.project) {
+      return instance.project(local);
+    }
+    return local;
+  };
 
   const nodes = useMemo<Node[]>(
     () =>
@@ -124,16 +208,20 @@ const Canvas = ({
   );
 
   return (
-    <div className="canvas-shell">
+    <div className="canvas-shell" ref={shellRef}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        onInit={onInit}
+        onInit={(instance) => {
+          flowInstanceRef.current = instance;
+          onInit(instance);
+        }}
         fitView
         onNodeClick={(_, node) => {
           const nodeId = node.id;
+          closeContextMenu();
           if (!creatingRelationship) {
             onSelectObject(nodeId);
             return;
@@ -148,11 +236,30 @@ const Canvas = ({
             onCreateRelationship(pendingFromId, nodeId);
           }
         }}
+        onNodeContextMenu={(event, node) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openContextMenu({
+            kind: "object",
+            objectId: node.id,
+            clientX: event.clientX,
+            clientY: event.clientY,
+          });
+        }}
         onEdgeClick={(_, edge) => onSelectRelationship(edge.id)}
         onPaneClick={() => {
+          closeContextMenu();
           if (creatingRelationship) {
             onCancelCreateRelationship();
           }
+        }}
+        onPaneContextMenu={(event) => {
+          event.preventDefault();
+          openContextMenu({
+            kind: "pane",
+            clientX: event.clientX,
+            clientY: event.clientY,
+          });
         }}
         onNodeDragStop={(_, node) => onMoveObject(node.id, node.position)}
         panOnScroll
@@ -184,6 +291,42 @@ const Canvas = ({
           )}
         </EdgeLabelRenderer>
       </ReactFlow>
+      {contextMenu && (
+        <div
+          className="context-menu"
+          ref={menuRef}
+          style={{ left: contextMenu.left, top: contextMenu.top }}
+          role="menu"
+        >
+          {contextMenu.kind === "pane" ? (
+            <button
+              className="context-menu-item"
+              role="menuitem"
+              onClick={() => {
+                const position = resolveFlowPosition(
+                  contextMenu.clientX,
+                  contextMenu.clientY
+                );
+                onCreateObjectAt({ x: position.x - 110, y: position.y - 60 });
+                closeContextMenu();
+              }}
+            >
+              新建 Object
+            </button>
+          ) : (
+            <button
+              className="context-menu-item"
+              role="menuitem"
+              onClick={() => {
+                onStartRelationshipFrom(contextMenu.objectId);
+                closeContextMenu();
+              }}
+            >
+              新建 Relationship
+            </button>
+          )}
+        </div>
+      )}
       {objects.length === 0 && (
         <div className="canvas-empty">
           <div className="canvas-empty-card">

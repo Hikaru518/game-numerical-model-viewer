@@ -4,8 +4,6 @@ type TopBarProps = {
   pendingFromId: string | null;
   onImport: () => void;
   onExport: () => void;
-  onCreateObject: () => void;
-  onToggleRelationship: () => void;
   onFitView: () => void;
   onFocusSelection: () => void;
 };
@@ -16,8 +14,6 @@ const TopBar = ({
   pendingFromId,
   onImport,
   onExport,
-  onCreateObject,
-  onToggleRelationship,
   onFitView,
   onFocusSelection,
 }: TopBarProps) => {
@@ -44,15 +40,6 @@ const TopBar = ({
         </button>
         <button className="btn ghost" onClick={onExport}>
           导出 JSON
-        </button>
-        <button className="btn primary" onClick={onCreateObject}>
-          创建 Object
-        </button>
-        <button
-          className={`btn ${creatingRelationship ? "active" : "ghost"}`}
-          onClick={onToggleRelationship}
-        >
-          创建 Relationship
         </button>
         <button className="icon-btn" onClick={onFitView} aria-label="适配内容">
           适配

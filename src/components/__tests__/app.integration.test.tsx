@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import App from "../../App";
@@ -11,7 +11,7 @@ vi.mock("reactflow", async () => {
   type MockNode = {
     id: string;
     position: { x: number; y: number };
-    data?: { object?: { name?: string } };
+    data?: { object?: { name?: string }; isPendingSource?: boolean };
   };
 
   type MockEdge = { id: string };
@@ -22,6 +22,7 @@ vi.mock("reactflow", async () => {
     getNode: (
       id: string
     ) => { id: string; position: { x: number; y: number }; width: number; height: number } | undefined;
+    screenToFlowPosition: (pos: { x: number; y: number }) => { x: number; y: number };
   };
 
   type ReactFlowProps = {
@@ -31,6 +32,8 @@ vi.mock("reactflow", async () => {
     onNodeClick?: (event: unknown, node: MockNode) => void;
     onEdgeClick?: (event: unknown, edge: MockEdge) => void;
     onPaneClick?: () => void;
+    onPaneContextMenu?: (event: MouseEvent) => void;
+    onNodeContextMenu?: (event: MouseEvent, node: MockNode) => void;
     children?: ReactNode;
   };
 
@@ -41,6 +44,8 @@ vi.mock("reactflow", async () => {
     onNodeClick,
     onEdgeClick,
     onPaneClick,
+    onPaneContextMenu,
+    onNodeContextMenu,
     children,
   }: ReactFlowProps) => {
     useEffect(() => {
@@ -53,19 +58,31 @@ vi.mock("reactflow", async () => {
           if (!match) return undefined;
           return { id: match.id, position: match.position, width: 220, height: 120 };
         },
+        screenToFlowPosition: ({ x, y }: { x: number; y: number }) => ({ x, y }),
       });
     }, [nodes, onInit]);
 
     return (
-      <div data-testid="reactflow" onClick={() => onPaneClick?.()}>
+      <div
+        data-testid="reactflow"
+        onClick={() => onPaneClick?.()}
+        onContextMenu={(event) => onPaneContextMenu?.(event.nativeEvent)}
+      >
         <div data-testid="reactflow-nodes">
           {nodes.map((node) => (
             <button
               key={node.id}
               data-testid={`node-${node.id}`}
+              className={node.data?.isPendingSource ? "mock-pending-source" : undefined}
+              data-pending={node.data?.isPendingSource ? "true" : "false"}
               onClick={(event) => {
                 event.stopPropagation();
                 onNodeClick?.(event, node);
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onNodeContextMenu?.(event.nativeEvent, node);
               }}
             >
               {node.data?.object?.name || node.id}
@@ -143,7 +160,8 @@ describe("App integration flows", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "创建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 300, clientY: 200 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
 
     const nameInput = screen.getByPlaceholderText("填写对象名称");
     await user.clear(nameInput);
@@ -156,10 +174,15 @@ describe("App integration flows", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "创建 Object" }));
-    await user.click(screen.getByRole("button", { name: "创建 Object" }));
-    await user.click(screen.getByRole("button", { name: "创建 Relationship" }));
-    await user.click(screen.getByTestId("node-obj_uuid-1"));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 520, clientY: 220 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    fireEvent.contextMenu(screen.getByTestId("node-obj_uuid-1"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Relationship" }));
+
+    expect(screen.getByTestId("node-obj_uuid-1")).toHaveAttribute("data-pending", "true");
     await user.click(screen.getByTestId("node-obj_uuid-2"));
 
     expect(screen.getByText("未命名关系")).toBeInTheDocument();
@@ -170,9 +193,11 @@ describe("App integration flows", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "创建 Object" }));
-    await user.click(screen.getByRole("button", { name: "创建 Relationship" }));
-    await user.click(screen.getByTestId("node-obj_uuid-1"));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 300, clientY: 200 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    fireEvent.contextMenu(screen.getByTestId("node-obj_uuid-1"), { clientX: 300, clientY: 200 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Relationship" }));
     await user.click(screen.getByTestId("node-obj_uuid-1"));
 
     expect(screen.getByText("无法创建关系")).toBeInTheDocument();
@@ -183,10 +208,13 @@ describe("App integration flows", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "创建 Object" }));
-    await user.click(screen.getByRole("button", { name: "创建 Object" }));
-    await user.click(screen.getByRole("button", { name: "创建 Relationship" }));
-    await user.click(screen.getByTestId("node-obj_uuid-1"));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 520, clientY: 220 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    fireEvent.contextMenu(screen.getByTestId("node-obj_uuid-1"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Relationship" }));
     await user.click(screen.getByTestId("node-obj_uuid-2"));
 
     await user.click(screen.getByTestId("node-obj_uuid-1"));
