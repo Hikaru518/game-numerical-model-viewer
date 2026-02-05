@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ObjectEntity, Relationship, ArrowType } from "../model/types";
 
 type Selection =
@@ -30,11 +30,225 @@ const arrowOptions: { value: ArrowType; label: string }[] = [
   { value: "none", label: "无箭头" },
 ];
 
+type ObjectPanelProps = {
+  object: ObjectEntity;
+  objects: ObjectEntity[];
+  relationships: Relationship[];
+  onSelectRelationship: (id: string) => void;
+  onUpdateObject: (id: string, updater: Partial<ObjectEntity>) => void;
+  onAddAttribute: (objectId: string) => void;
+  onUpdateAttribute: (
+    objectId: string,
+    index: number,
+    updater: Partial<ObjectEntity["attributes"][0]>
+  ) => void;
+  onFocusObject: (id: string) => void;
+  onDeleteObject: (id: string) => void;
+};
+
+const ObjectPanel = ({
+  object,
+  objects,
+  relationships,
+  onSelectRelationship,
+  onUpdateObject,
+  onAddAttribute,
+  onUpdateAttribute,
+  onFocusObject,
+  onDeleteObject,
+}: ObjectPanelProps) => {
+  const findObject = (id: string) => objects.find((obj) => obj.id === id);
+  const [attributesCollapsed, setAttributesCollapsed] = useState(false);
+
+  const relatedRelationships = relationships.filter(
+    (rel) => rel.fromId === object.id || rel.toId === object.id
+  );
+
+  const incoming: string[] = [];
+  const outgoing: string[] = [];
+  const undirected: string[] = [];
+
+  relatedRelationships.forEach((rel) => {
+    if (rel.arrowType === "none") {
+      const otherId = rel.fromId === object.id ? rel.toId : rel.fromId;
+      if (otherId) undirected.push(otherId);
+      return;
+    }
+
+    if (rel.arrowType === "double") {
+      const otherId = rel.fromId === object.id ? rel.toId : rel.fromId;
+      if (otherId) {
+        incoming.push(otherId);
+        outgoing.push(otherId);
+      }
+      return;
+    }
+
+    if (rel.arrowType === "single") {
+      if (rel.toId === object.id) {
+        incoming.push(rel.fromId);
+      }
+      if (rel.fromId === object.id) {
+        outgoing.push(rel.toId);
+      }
+    }
+  });
+
+  const renderObjectList = (ids: string[]) => {
+    if (ids.length === 0) {
+      return <div className="panel-muted">无</div>;
+    }
+    return ids.map((id) => {
+      const obj = findObject(id);
+      return (
+        <button key={id} className="panel-chip" onClick={() => onFocusObject(id)}>
+          {obj?.name || id}
+        </button>
+      );
+    });
+  };
+
+  return (
+    <aside className="side-panel">
+      <div className="panel-header">
+        <div>
+          <div className="panel-title">{object.name || "未命名对象"}</div>
+          <div className="panel-subtitle">id: {object.id}</div>
+        </div>
+        <div className="panel-header-actions">
+          <button className="btn danger compact" onClick={() => onDeleteObject(object.id)}>
+            删除
+          </button>
+        </div>
+      </div>
+
+      <div className="panel-section">
+        <div className="section-title">名称</div>
+        <input
+          className="panel-input"
+          placeholder="填写对象名称"
+          value={object.name}
+          onChange={(event) => onUpdateObject(object.id, { name: event.target.value })}
+        />
+      </div>
+
+      <div className="panel-section">
+        <div className="section-title">简介</div>
+        <textarea
+          className="panel-textarea"
+          placeholder="填写对象简介"
+          value={object.description}
+          onChange={(event) => onUpdateObject(object.id, { description: event.target.value })}
+        />
+      </div>
+
+      <div className="panel-section">
+        <div className="section-header">
+          <div className="section-title">Attributes</div>
+          <div className="section-actions">
+            <button
+              className="btn ghost compact"
+              onClick={() => setAttributesCollapsed((prev) => !prev)}
+            >
+              {attributesCollapsed ? "展开" : "折叠"}
+            </button>
+            <button className="icon-btn small" onClick={() => onAddAttribute(object.id)}>
+              +
+            </button>
+          </div>
+        </div>
+        {attributesCollapsed ? (
+          <div className="panel-muted">已折叠</div>
+        ) : (
+          <>
+            {object.attributes.length === 0 && <div className="panel-muted">暂无属性</div>}
+            {object.attributes.map((attr, index) => (
+              <div key={`${object.id}-${index}`} className="attribute-card">
+                <div className="attribute-row">
+                  <input
+                    className="panel-input"
+                    placeholder="属性名称"
+                    value={attr.name}
+                    onChange={(event) =>
+                      onUpdateAttribute(object.id, index, { name: event.target.value })
+                    }
+                  />
+                  <button
+                    className="btn ghost compact"
+                    onClick={() => navigator.clipboard?.writeText(attr.formula || "")}
+                  >
+                    复制公式
+                  </button>
+                </div>
+                <textarea
+                  className="panel-textarea"
+                  placeholder="属性简介"
+                  value={attr.description}
+                  onChange={(event) =>
+                    onUpdateAttribute(object.id, index, { description: event.target.value })
+                  }
+                />
+                <textarea
+                  className="panel-textarea mono"
+                  placeholder="未填写公式"
+                  value={attr.formula}
+                  onChange={(event) =>
+                    onUpdateAttribute(object.id, index, { formula: event.target.value })
+                  }
+                />
+              </div>
+            ))}
+            <div className="panel-muted">点击右上角复制公式（保留换行）</div>
+          </>
+        )}
+      </div>
+
+      <div className="panel-section">
+        <div className="section-title">影响对象</div>
+        <div className="panel-help">箭头语义：A → B 表示 A 影响 B（B 依赖 A）</div>
+        <div className="impact-group">
+          <div className="impact-title">Incoming（影响来源）</div>
+          <div className="impact-list">{renderObjectList(incoming)}</div>
+        </div>
+        <div className="impact-group">
+          <div className="impact-title">Outgoing（影响的对象）</div>
+          <div className="impact-list">{renderObjectList(outgoing)}</div>
+        </div>
+        <div className="impact-group">
+          <div className="impact-title">Undirected（关联）</div>
+          <div className="impact-list">{renderObjectList(undirected)}</div>
+        </div>
+      </div>
+
+      <div className="panel-section">
+        <div className="section-title">相关 Relationships</div>
+        {relatedRelationships.length === 0 && <div className="panel-muted">无关联关系</div>}
+        {relatedRelationships.map((rel) => {
+          const fromName = findObject(rel.fromId)?.name || rel.fromId;
+          const toName = findObject(rel.toId)?.name || rel.toId;
+          const arrow = rel.arrowType === "single" ? "→" : rel.arrowType === "double" ? "↔" : "—";
+          return (
+            <button
+              key={rel.id}
+              className="relation-card"
+              onClick={() => onSelectRelationship(rel.id)}
+            >
+              <div className="relation-title">{rel.name || "未命名关系"}</div>
+              <div className="relation-desc">
+                label：{rel.label || "未填写"} · {fromName} {arrow} {toName}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </aside>
+  );
+};
+
 const SidePanel = ({
   objects,
   relationships,
   selection,
-  onSelectObject,
   onSelectRelationship,
   onUpdateObject,
   onUpdateRelationship,
@@ -51,13 +265,6 @@ const SidePanel = ({
   const object = selection?.type === "object" ? findObject(selection.id) : null;
   const relationship =
     selection?.type === "relationship" ? findRelationship(selection.id) : null;
-  const [attributesCollapsed, setAttributesCollapsed] = useState(false);
-
-  useEffect(() => {
-    if (selection?.type === "object") {
-      setAttributesCollapsed(false);
-    }
-  }, [selection?.type, selection?.id]);
 
   if (!selection) {
     return (
@@ -77,217 +284,19 @@ const SidePanel = ({
   }
 
   if (selection.type === "object" && object) {
-    const relatedRelationships = relationships.filter(
-      (rel) => rel.fromId === object.id || rel.toId === object.id
-    );
-
-    const incoming: string[] = [];
-    const outgoing: string[] = [];
-    const undirected: string[] = [];
-
-    relatedRelationships.forEach((rel) => {
-      if (rel.arrowType === "none") {
-        const otherId = rel.fromId === object.id ? rel.toId : rel.fromId;
-        if (otherId) undirected.push(otherId);
-        return;
-      }
-
-      if (rel.arrowType === "double") {
-        const otherId = rel.fromId === object.id ? rel.toId : rel.fromId;
-        if (otherId) {
-          incoming.push(otherId);
-          outgoing.push(otherId);
-        }
-        return;
-      }
-
-      if (rel.arrowType === "single") {
-        if (rel.toId === object.id) {
-          incoming.push(rel.fromId);
-        }
-        if (rel.fromId === object.id) {
-          outgoing.push(rel.toId);
-        }
-      }
-    });
-
-    const renderObjectList = (ids: string[]) => {
-      if (ids.length === 0) {
-        return <div className="panel-muted">无</div>;
-      }
-      return ids.map((id) => {
-        const obj = findObject(id);
-        return (
-          <button
-            key={id}
-            className="panel-chip"
-            onClick={() => onFocusObject(id)}
-          >
-            {obj?.name || id}
-          </button>
-        );
-      });
-    };
-
     return (
-      <aside className="side-panel">
-        <div className="panel-header">
-          <div>
-            <div className="panel-title">{object.name || "未命名对象"}</div>
-            <div className="panel-subtitle">id: {object.id}</div>
-          </div>
-          <div className="panel-header-actions">
-            <button
-              className="btn danger compact"
-              onClick={() => onDeleteObject(object.id)}
-            >
-              删除
-            </button>
-          </div>
-        </div>
-
-        <div className="panel-section">
-          <div className="section-title">名称</div>
-          <input
-            className="panel-input"
-            placeholder="填写对象名称"
-            value={object.name}
-            onChange={(event) =>
-              onUpdateObject(object.id, { name: event.target.value })
-            }
-          />
-        </div>
-
-        <div className="panel-section">
-          <div className="section-title">简介</div>
-          <textarea
-            className="panel-textarea"
-            placeholder="填写对象简介"
-            value={object.description}
-            onChange={(event) =>
-              onUpdateObject(object.id, { description: event.target.value })
-            }
-          />
-        </div>
-
-        <div className="panel-section">
-          <div className="section-header">
-            <div className="section-title">Attributes</div>
-            <div className="section-actions">
-              <button
-                className="btn ghost compact"
-                onClick={() => setAttributesCollapsed((prev) => !prev)}
-              >
-                {attributesCollapsed ? "展开" : "折叠"}
-              </button>
-              <button
-                className="icon-btn small"
-                onClick={() => onAddAttribute(object.id)}
-              >
-                +
-              </button>
-            </div>
-          </div>
-          {attributesCollapsed ? (
-            <div className="panel-muted">已折叠</div>
-          ) : (
-            <>
-              {object.attributes.length === 0 && (
-                <div className="panel-muted">暂无属性</div>
-              )}
-              {object.attributes.map((attr, index) => (
-                <div key={`${object.id}-${index}`} className="attribute-card">
-                  <div className="attribute-row">
-                    <input
-                      className="panel-input"
-                      placeholder="属性名称"
-                      value={attr.name}
-                      onChange={(event) =>
-                        onUpdateAttribute(object.id, index, { name: event.target.value })
-                      }
-                    />
-                    <button
-                      className="btn ghost compact"
-                      onClick={() =>
-                        navigator.clipboard?.writeText(attr.formula || "")
-                      }
-                    >
-                      复制公式
-                    </button>
-                  </div>
-                  <textarea
-                    className="panel-textarea"
-                    placeholder="属性简介"
-                    value={attr.description}
-                    onChange={(event) =>
-                      onUpdateAttribute(object.id, index, {
-                        description: event.target.value,
-                      })
-                    }
-                  />
-                  <textarea
-                    className="panel-textarea mono"
-                    placeholder="未填写公式"
-                    value={attr.formula}
-                    onChange={(event) =>
-                      onUpdateAttribute(object.id, index, { formula: event.target.value })
-                    }
-                  />
-                </div>
-              ))}
-              <div className="panel-muted">点击右上角复制公式（保留换行）</div>
-            </>
-          )}
-        </div>
-
-        <div className="panel-section">
-          <div className="section-title">影响对象</div>
-          <div className="panel-help">
-            箭头语义：A → B 表示 A 影响 B（B 依赖 A）
-          </div>
-          <div className="impact-group">
-            <div className="impact-title">Incoming（影响来源）</div>
-            <div className="impact-list">{renderObjectList(incoming)}</div>
-          </div>
-          <div className="impact-group">
-            <div className="impact-title">Outgoing（影响的对象）</div>
-            <div className="impact-list">{renderObjectList(outgoing)}</div>
-          </div>
-          <div className="impact-group">
-            <div className="impact-title">Undirected（关联）</div>
-            <div className="impact-list">{renderObjectList(undirected)}</div>
-          </div>
-        </div>
-
-        <div className="panel-section">
-          <div className="section-title">相关 Relationships</div>
-          {relatedRelationships.length === 0 && (
-            <div className="panel-muted">无关联关系</div>
-          )}
-          {relatedRelationships.map((rel) => {
-            const fromName = findObject(rel.fromId)?.name || rel.fromId;
-            const toName = findObject(rel.toId)?.name || rel.toId;
-            const arrow =
-              rel.arrowType === "single"
-                ? "→"
-                : rel.arrowType === "double"
-                  ? "↔"
-                  : "—";
-            return (
-              <button
-                key={rel.id}
-                className="relation-card"
-                onClick={() => onSelectRelationship(rel.id)}
-              >
-                <div className="relation-title">{rel.name || "未命名关系"}</div>
-                <div className="relation-desc">
-                  label：{rel.label || "未填写"} · {fromName} {arrow} {toName}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </aside>
+      <ObjectPanel
+        key={object.id}
+        object={object}
+        objects={objects}
+        relationships={relationships}
+        onSelectRelationship={onSelectRelationship}
+        onUpdateObject={onUpdateObject}
+        onAddAttribute={onAddAttribute}
+        onUpdateAttribute={onUpdateAttribute}
+        onFocusObject={onFocusObject}
+        onDeleteObject={onDeleteObject}
+      />
     );
   }
 

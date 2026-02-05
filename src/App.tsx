@@ -43,7 +43,6 @@ function App() {
   const [creatingRelationship, setCreatingRelationship] = useState(false);
   const [pendingFromId, setPendingFromId] = useState<string | null>(null);
   const [errorModal, setErrorModal] = useState<ErrorModalState | null>(null);
-  const [pendingFitView, setPendingFitView] = useState(false);
 
   const flowRef = useRef<ReactFlowInstance | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -116,7 +115,9 @@ function App() {
       setDirty(false);
       setCreatingRelationship(false);
       setPendingFromId(null);
-      setPendingFitView(true);
+      requestAnimationFrame(() => {
+        flowRef.current?.fitView({ padding: 0.2, duration: 300 });
+      });
     },
     [openFileDialog]
   );
@@ -172,7 +173,9 @@ function App() {
     }));
     setSelection({ type: "object", id });
     setDirty(true);
-    setPendingFitView(true);
+    requestAnimationFrame(() => {
+      flowRef.current?.fitView({ padding: 0.2, duration: 300 });
+    });
   }, [model.objects.length]);
 
   const createRelationship = useCallback(
@@ -388,12 +391,6 @@ function App() {
     },
     []
   );
-
-  useEffect(() => {
-    if (!pendingFitView) return;
-    handleFitView();
-    setPendingFitView(false);
-  }, [handleFitView, pendingFitView]);
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {

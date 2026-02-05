@@ -1,3 +1,9 @@
+# Testing — ReactFlow mock（Vitest + Testing Library）（snapshot）
+
+目标：把 ReactFlow mock 成可控 DOM，从而能稳定测试“用户旅程”（点击 node/edge、触发回调等）。\n
+关键点：mock `onInit` 传入的 instance（`fitView/setCenter/getNode`），并 stub `crypto.randomUUID()` 让生成的 id 可预测。
+
+```ts
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -138,70 +144,6 @@ describe("App integration flows", () => {
     expect(clickSpy).toHaveBeenCalled();
     clickSpy.mockRestore();
   });
-
-  it("creates an object and updates its name", async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(screen.getByRole("button", { name: "创建 Object" }));
-
-    const nameInput = screen.getByPlaceholderText("填写对象名称");
-    await user.clear(nameInput);
-    await user.type(nameInput, "角色");
-
-    expect(screen.getByTestId("node-obj_uuid-1")).toHaveTextContent("角色");
-  });
-
-  it("creates a relationship by selecting two nodes", async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(screen.getByRole("button", { name: "创建 Object" }));
-    await user.click(screen.getByRole("button", { name: "创建 Object" }));
-    await user.click(screen.getByRole("button", { name: "创建 Relationship" }));
-    await user.click(screen.getByTestId("node-obj_uuid-1"));
-    await user.click(screen.getByTestId("node-obj_uuid-2"));
-
-    expect(screen.getByText("未命名关系")).toBeInTheDocument();
-    expect(screen.getByTestId("edge-rel_uuid-3")).toBeInTheDocument();
-  });
-
-  it("blocks self relationship creation", async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(screen.getByRole("button", { name: "创建 Object" }));
-    await user.click(screen.getByRole("button", { name: "创建 Relationship" }));
-    await user.click(screen.getByTestId("node-obj_uuid-1"));
-    await user.click(screen.getByTestId("node-obj_uuid-1"));
-
-    expect(screen.getByText("无法创建关系")).toBeInTheDocument();
-    expect(screen.getByText("起点与终点不能相同")).toBeInTheDocument();
-  });
-
-  it("prevents deleting objects with relationships until removed", async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(screen.getByRole("button", { name: "创建 Object" }));
-    await user.click(screen.getByRole("button", { name: "创建 Object" }));
-    await user.click(screen.getByRole("button", { name: "创建 Relationship" }));
-    await user.click(screen.getByTestId("node-obj_uuid-1"));
-    await user.click(screen.getByTestId("node-obj_uuid-2"));
-
-    await user.click(screen.getByTestId("node-obj_uuid-1"));
-    await user.click(screen.getByRole("button", { name: "删除" }));
-
-    expect(screen.getByText("无法删除对象")).toBeInTheDocument();
-    const closeButtons = screen.getAllByRole("button", { name: "关闭" });
-    await user.click(closeButtons[1]);
-
-    await user.click(screen.getByTestId("edge-rel_uuid-3"));
-    await user.click(screen.getByRole("button", { name: "删除" }));
-
-    await user.click(screen.getByTestId("node-obj_uuid-1"));
-    await user.click(screen.getByRole("button", { name: "删除" }));
-
-    expect(screen.queryByTestId("node-obj_uuid-1")).not.toBeInTheDocument();
-  });
 });
+```
+

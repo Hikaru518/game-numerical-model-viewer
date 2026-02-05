@@ -26,28 +26,28 @@
 
 ## 代码结构（关键路径）
 
-- **入口与状态管理**：[`src/App.tsx`](src/App.tsx)
+- **入口与状态管理**：`[src/App.tsx](src/App.tsx)`
   - 单一顶层 state：`model`、`positions`、`selection`、`dirty`、关系创建中间态等
   - 导入/导出、创建/更新/删除、fitView/focusSelection 等交互都在这里编排
-- **数据模型**：[`src/model/types.ts`](src/model/types.ts)
+- **数据模型**：`[src/model/types.ts](src/model/types.ts)`
   - `ModelData` / `ObjectEntity` / `Relationship` / `ValidationIssue` 等
-- **校验与兼容**：[`src/model/validation.ts`](src/model/validation.ts)
+- **校验与兼容**：`[src/model/validation.ts](src/model/validation.ts)`
   - `validateModel(unknown)`：导入前校验（结构/类型/引用/枚举合法性）
   - `validateForExport(ModelData)`：导出前更严格校验（例如 Object.name 不能为空）
   - `coerceModel(ModelData)`：补齐缺省字段（兼容旧/脏数据）
-- **布局**：[`src/model/layout.ts`](src/model/layout.ts)
+- **布局**：`[src/model/layout.ts](src/model/layout.ts)`
   - `autoLayout(objects)`：导入后给对象生成确定性网格坐标
   - `nextGridPosition(index)`：新增对象时的默认放置位置
-- **工具函数**：[`src/model/utils.ts`](src/model/utils.ts)
+- **工具函数**：`[src/model/utils.ts](src/model/utils.ts)`
   - `createId(prefix)`：默认使用 `crypto.randomUUID()`（测试中会 stub）
   - `createEmptyAttribute()`
 - **组件**：
-  - 画布：[`src/components/Canvas.tsx`](src/components/Canvas.tsx)
-  - Object 节点：[`src/components/ObjectNode.tsx`](src/components/ObjectNode.tsx)
-  - Relationship 边：[`src/components/RelationshipEdge.tsx`](src/components/RelationshipEdge.tsx)
-  - 侧栏编辑：[`src/components/SidePanel.tsx`](src/components/SidePanel.tsx)
-  - 顶栏操作：[`src/components/TopBar.tsx`](src/components/TopBar.tsx)
-  - 错误弹窗：[`src/components/ErrorModal.tsx`](src/components/ErrorModal.tsx)
+  - 画布：`[src/components/Canvas.tsx](src/components/Canvas.tsx)`
+  - Object 节点：`[src/components/ObjectNode.tsx](src/components/ObjectNode.tsx)`
+  - Relationship 边：`[src/components/RelationshipEdge.tsx](src/components/RelationshipEdge.tsx)`
+  - 侧栏编辑：`[src/components/SidePanel.tsx](src/components/SidePanel.tsx)`
+  - 顶栏操作：`[src/components/TopBar.tsx](src/components/TopBar.tsx)`
+  - 错误弹窗：`[src/components/ErrorModal.tsx](src/components/ErrorModal.tsx)`
 
 ## 核心数据流（导入/编辑/导出）
 
@@ -90,9 +90,9 @@
 
 ## 测试策略与现有模式
 
-- **Model 层**：[`src/model/__tests__/validation.test.ts`](src/model/__tests__/validation.test.ts)、[`src/model/__tests__/layout.test.ts`](src/model/__tests__/layout.test.ts)
+- **Model 层**：`[src/model/__tests__/validation.test.ts](src/model/__tests__/validation.test.ts)`、`[src/model/__tests__/layout.test.ts](src/model/__tests__/layout.test.ts)`
   - 覆盖：合法输入、缺失字段、重复 id、引用不存在、非法枚举等
-- **UI 集成流（轻量 E2E）**：[`src/components/__tests__/app.integration.test.tsx`](src/components/__tests__/app.integration.test.tsx)
+- **UI 集成流（轻量 E2E）**：`[src/components/__tests__/app.integration.test.tsx](src/components/__tests__/app.integration.test.tsx)`
   - 通过 `vi.mock("reactflow")` 把 ReactFlow 变成可控的 DOM 渲染，测试创建对象/关系、删除阻断等用户旅程
 - **测试约定**：
   - 每个新逻辑至少：happy path / edge case / failure case

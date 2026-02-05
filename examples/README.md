@@ -1,21 +1,22 @@
 # examples/
 
-这个目录用于放置 **“可复用的实现模式”**，帮助 AI 在实现新功能时更稳定地遵循本仓库的约定。
-当前我们优先用“指向仓库内真实文件”的方式作为 examples（避免复制粘贴导致漂移）。如果后续发现某些模式经常被误用，可以再把最小片段抽到 `examples/snippets/`。
+这个目录用于放置 **“可复用的实现模式（快照）”**，帮助 AI 在实现新功能时更稳定地遵循本仓库的约定。
+
+当你有意修改某个核心模式（例如校验策略、ReactFlow 测试 mock 方式）时，需要**同步更新对应 snippet**。
 
 ## 优先参考清单（按常用程度）
 
-- **导入/导出校验 & issue 汇总模式**：[`src/model/validation.ts`](../src/model/validation.ts)
+- **导入/导出校验 & issue 汇总模式**：[`snippets/validation-import-export.md`](snippets/validation-import-export.md)
   - 关键点：`validateModel(unknown)` 不 throw，通过 `issues[]` 汇总（含 `fieldPath/id/suggestion`）
-- **用户旅程集成测试（轻量 E2E）**：[`src/components/__tests__/app.integration.test.tsx`](../src/components/__tests__/app.integration.test.tsx)
+- **用户旅程集成测试（轻量 E2E）**：[`snippets/reactflow-mock-integration-test.md`](snippets/reactflow-mock-integration-test.md)
   - 关键点：`vi.mock("reactflow")` 把 ReactFlow 替换成可控 DOM；并 stub `crypto.randomUUID`
-- **顶层状态编排（单一 source of truth）**：[`src/App.tsx`](../src/App.tsx)
+- **顶层状态编排（单一 source of truth）**：[`snippets/app-state-import-export.md`](snippets/app-state-import-export.md)
   - 关键点：`model/positions/selection/dirty` 都在 `App` 管；组件尽量只做渲染与事件上报
-- **ReactFlow 节点/边组织方式**：[`src/components/Canvas.tsx`](../src/components/Canvas.tsx)
+- **ReactFlow 节点/边组织方式**：[`snippets/canvas-nodes-edges.md`](snippets/canvas-nodes-edges.md)
   - 关键点：`useMemo` 生成 nodes/edges；edge hover tooltip；markerStart/markerEnd 由 `arrowType` 决定
-- **数据模型定义**：[`src/model/types.ts`](../src/model/types.ts)
-- **布局策略（确定性网格）**：[`src/model/layout.ts`](../src/model/layout.ts)
-- **ID/默认 Attribute**：[`src/model/utils.ts`](../src/model/utils.ts)
+- **数据模型定义**：[`snippets/model-types.md`](snippets/model-types.md)
+- **布局策略（确定性网格）**：[`snippets/layout-grid.md`](snippets/layout-grid.md)
+- **ID/默认 Attribute**：[`snippets/utils-createId-attribute.md`](snippets/utils-createId-attribute.md)
 
 ## 常见“不要做”的事
 

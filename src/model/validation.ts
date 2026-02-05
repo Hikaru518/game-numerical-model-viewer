@@ -8,7 +8,10 @@ import type {
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-const allowedArrowTypes: ArrowType[] = ["single", "double", "none"];
+const allowedArrowTypes = ["single", "double", "none"] as const satisfies readonly ArrowType[];
+
+const isArrowType = (value: string): value is ArrowType =>
+  (allowedArrowTypes as readonly string[]).includes(value);
 
 const pushIssue = (
   issues: ValidationIssue[],
@@ -208,7 +211,7 @@ export const validateModel = (data: unknown): ValidationResult => {
         );
       }
 
-      if (typeof arrowType !== "string" || !allowedArrowTypes.includes(arrowType)) {
+      if (typeof arrowType !== "string" || !isArrowType(arrowType)) {
         pushIssue(
           issues,
           `arrowType 必须为 ${allowedArrowTypes.join(" / ")}`,

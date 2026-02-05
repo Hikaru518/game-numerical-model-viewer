@@ -103,28 +103,30 @@ describe("validateForExport", () => {
 
 describe("coerceModel", () => {
   it("fills missing fields with defaults", () => {
-    const coerced = coerceModel({
-      schemaVersion: 1,
-      objects: [
-        {
-          id: "obj_1",
-          name: undefined,
-          description: undefined,
-          attributes: undefined,
-        } as unknown,
-      ],
-      relationships: [
-        {
-          id: "rel_1",
-          name: undefined,
-          description: undefined,
-          fromId: undefined,
-          toId: undefined,
-          arrowType: undefined,
-          label: undefined,
-        } as unknown,
-      ],
-    });
+    const coerced = coerceModel(
+      {
+        schemaVersion: 1,
+        objects: [
+          {
+            id: "obj_1",
+            name: undefined,
+            description: undefined,
+            attributes: undefined,
+          },
+        ],
+        relationships: [
+          {
+            id: "rel_1",
+            name: undefined,
+            description: undefined,
+            fromId: undefined,
+            toId: undefined,
+            arrowType: undefined,
+            label: undefined,
+          },
+        ],
+      } as unknown as ModelData
+    );
 
     expect(coerced.objects[0]).toEqual({
       id: "obj_1",
