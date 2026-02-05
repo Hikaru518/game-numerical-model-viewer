@@ -66,3 +66,16 @@ npm run dev
 - `npm run typecheck`：TypeScript 类型检查
 - `npm run validate`：一键验证（lint + tests + build）
 
+## Deploy to GitHub Pages
+
+本项目已配置 GitHub Actions 自动部署到 GitHub Pages（项目页）：
+
+1. 在 GitHub 仓库打开 **Settings → Pages**
+2. **Build and deployment → Source** 选择 **GitHub Actions**
+3. 推送到 `main` 分支后会自动构建并发布
+
+发布后的访问地址通常是：
+
+- `https://<YOUR_GITHUB_USERNAME>.github.io/GameNumericalModelViewer/`
+
+
