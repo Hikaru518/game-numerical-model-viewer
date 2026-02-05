@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import App from "../../App";
@@ -18,10 +18,14 @@ vi.mock("reactflow", async () => {
 
   type MockEdge = {
     id: string;
+    type?: string;
     source?: string;
     target?: string;
     sourceHandle?: string;
     targetHandle?: string;
+    data?: unknown;
+    markerStart?: unknown;
+    markerEnd?: unknown;
   };
 
   type MockReactFlowInstance = {
@@ -36,6 +40,7 @@ vi.mock("reactflow", async () => {
   type ReactFlowProps = {
     nodes?: MockNode[];
     edges?: MockEdge[];
+    edgeTypes?: Record<string, (props: Record<string, unknown>) => ReactNode>;
     onInit?: (instance: MockReactFlowInstance) => void;
     onNodeClick?: (event: unknown, node: MockNode) => void;
     onEdgeClick?: (event: unknown, edge: MockEdge) => void;
@@ -52,6 +57,7 @@ vi.mock("reactflow", async () => {
   const ReactFlow = ({
     nodes = [],
     edges = [],
+    edgeTypes,
     onInit,
     onNodeClick,
     onEdgeClick,
@@ -68,6 +74,7 @@ vi.mock("reactflow", async () => {
       latestProps = {
         nodes,
         edges,
+        edgeTypes,
         onInit,
         onNodeClick,
         onEdgeClick,
@@ -83,6 +90,7 @@ vi.mock("reactflow", async () => {
     }, [
       nodes,
       edges,
+      edgeTypes,
       onInit,
       onNodeClick,
       onEdgeClick,
@@ -139,16 +147,43 @@ vi.mock("reactflow", async () => {
         </div>
         <div data-testid="reactflow-edges">
           {edges.map((edge) => (
-            <button
-              key={edge.id}
-              data-testid={`edge-${edge.id}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onEdgeClick?.(event, edge);
-              }}
-            >
-              {edge.id}
-            </button>
+            <div key={edge.id} data-testid={`edge-wrapper-${edge.id}`}>
+              <button
+                data-testid={`edge-${edge.id}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEdgeClick?.(event, edge);
+                }}
+              >
+                {edge.id}
+              </button>
+              {edge.type && edgeTypes?.[edge.type]
+                ? (() => {
+                    const EdgeComp = edgeTypes[edge.type];
+                    const sourceNode = nodes.find((n) => n.id === edge.source);
+                    const targetNode = nodes.find((n) => n.id === edge.target);
+                    const sourceX = (sourceNode?.position.x ?? 0) + 110;
+                    const sourceY = (sourceNode?.position.y ?? 0) + 60;
+                    const targetX = (targetNode?.position.x ?? 0) + 110;
+                    const targetY = (targetNode?.position.y ?? 0) + 60;
+
+                    return (
+                      <div data-testid={`edge-render-${edge.id}`}>
+                        <EdgeComp
+                          id={edge.id}
+                          sourceX={sourceX}
+                          sourceY={sourceY}
+                          targetX={targetX}
+                          targetY={targetY}
+                          markerStart={edge.markerStart}
+                          markerEnd={edge.markerEnd}
+                          data={edge.data}
+                        />
+                      </div>
+                    );
+                  })()
+                : null}
+            </div>
           ))}
         </div>
         {children}
@@ -547,7 +582,13 @@ describe("App integration flows", () => {
     await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
 
     const rf = (await import("reactflow")) as unknown as {
-      __simulateConnect: (connection: { source?: string | null; target?: string | null; sourceHandle?: string | null; targetHandle?: string | null }) => void;
+      __simulateConnect: (connection: {
+        source?: string | null;
+        target?: string | null;
+        sourceHandle?: string | null;
+        targetHandle?: string | null;
+      }) => void;
+      __getLatestEdges: () => Array<{ id: string }>;
     };
 
     // Create first relationship: obj1 -> obj2
@@ -559,6 +600,9 @@ describe("App integration flows", () => {
     });
 
     expect(await screen.findByText("未命名关系")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(rf.__getLatestEdges().some((edge) => edge.id === "rel_uuid-3")).toBe(true);
+    });
 
     // Close any modal
     const closeButton = screen.queryByRole("button", { name: "关闭" });
@@ -575,5 +619,125 @@ describe("App integration flows", () => {
     // Should show error modal for duplicate
     expect(await screen.findByText("无法创建关系")).toBeInTheDocument();
     expect(await screen.findByText("同一对对象之间已存在关系")).toBeInTheDocument();
+  });
+
+  it("adds and deletes relationship curve points (right click + context menu)", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Create two objects
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 520, clientY: 220 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    // Create relationship
+    fireEvent.contextMenu(screen.getByTestId("node-obj_uuid-1"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Relationship" }));
+    await user.click(screen.getByTestId("node-obj_uuid-2"));
+
+    // Select relationship so control points (if any) are visible
+    await user.click(screen.getByTestId("edge-rel_uuid-3"));
+
+    const interactionPath = screen.getByTestId("relationship-edge-interaction-rel_uuid-3");
+    fireEvent.contextMenu(interactionPath, { clientX: 400, clientY: 240 });
+    await user.click(screen.getByRole("menuitem", { name: "添加控制点" }));
+
+    const point = await screen.findByTestId("curve-point-rel_uuid-3-0");
+    expect(point).toBeInTheDocument();
+
+    fireEvent.contextMenu(point, { clientX: 410, clientY: 250 });
+    await user.click(screen.getByRole("menuitem", { name: "删除控制点" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("curve-point-rel_uuid-3-0")).not.toBeInTheDocument();
+    });
+  });
+
+  it("blocks adding more than 5 curve points", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Create two objects
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 520, clientY: 220 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    // Create relationship
+    fireEvent.contextMenu(screen.getByTestId("node-obj_uuid-1"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Relationship" }));
+    await user.click(screen.getByTestId("node-obj_uuid-2"));
+
+    await user.click(screen.getByTestId("edge-rel_uuid-3"));
+    const interactionPath = screen.getByTestId("relationship-edge-interaction-rel_uuid-3");
+
+    for (let i = 0; i < 5; i += 1) {
+      fireEvent.contextMenu(interactionPath, { clientX: 320 + i * 20, clientY: 200 + i * 10 });
+      // menu should open each time; click to insert
+      await user.click(screen.getByRole("menuitem", { name: "添加控制点" }));
+    }
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText(/curve point/i)).toHaveLength(5);
+    });
+
+    fireEvent.contextMenu(interactionPath, { clientX: 520, clientY: 320 });
+    await user.click(screen.getByRole("menuitem", { name: "添加控制点" }));
+
+    expect(await screen.findByText("无法添加控制点")).toBeInTheDocument();
+    expect(await screen.findByText("控制点不能超过 5 个")).toBeInTheDocument();
+    expect(screen.getAllByLabelText(/curve point/i)).toHaveLength(5);
+
+    const dialog = screen.getByRole("dialog");
+    const closeButtons = within(dialog).getAllByRole("button", { name: "关闭" });
+    await user.click(closeButtons[closeButtons.length - 1]);
+  });
+
+  it("drags a curve point and commits on release", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Create two objects
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+    fireEvent.contextMenu(screen.getByTestId("reactflow"), { clientX: 520, clientY: 220 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Object" }));
+
+    // Create relationship
+    fireEvent.contextMenu(screen.getByTestId("node-obj_uuid-1"), { clientX: 260, clientY: 180 });
+    await user.click(screen.getByRole("menuitem", { name: "新建 Relationship" }));
+    await user.click(screen.getByTestId("node-obj_uuid-2"));
+
+    // Select relationship so control points are visible
+    await user.click(screen.getByTestId("edge-rel_uuid-3"));
+
+    // Insert one control point via edge context menu
+    const interactionPath = screen.getByTestId("relationship-edge-interaction-rel_uuid-3");
+    fireEvent.contextMenu(interactionPath, { clientX: 400, clientY: 240 });
+    await user.click(screen.getByRole("menuitem", { name: "添加控制点" }));
+
+    const point = await screen.findByTestId("curve-point-rel_uuid-3-0");
+    expect(point).toHaveStyle(
+      "transform: translate(-50%, -50%) translate(400px, 240px);"
+    );
+
+    // Drag: preview during move, commit on pointerup
+    fireEvent.pointerDown(point, { pointerId: 1, button: 0, clientX: 400, clientY: 240 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 450, clientY: 260 });
+
+    await waitFor(() => {
+      expect(point).toHaveStyle(
+        "transform: translate(-50%, -50%) translate(450px, 260px);"
+      );
+    });
+
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 450, clientY: 260 });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("curve-point-rel_uuid-3-0")).toHaveStyle(
+        "transform: translate(-50%, -50%) translate(450px, 260px);"
+      );
+    });
   });
 });

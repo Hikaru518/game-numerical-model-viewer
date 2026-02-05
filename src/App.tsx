@@ -50,6 +50,7 @@ const parseHandleLocation = (
 
 function App() {
   const [model, setModel] = useState<ModelData>(initialModel);
+  const modelRef = useRef<ModelData>(model);
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>(
     {}
   );
@@ -61,6 +62,10 @@ function App() {
 
   const flowRef = useRef<ReactFlowInstance | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    modelRef.current = model;
+  }, [model]);
 
   const setFlowInstance = useCallback((instance: ReactFlowInstance) => {
     flowRef.current = instance;
@@ -324,6 +329,99 @@ function App() {
         ),
       }));
       setDirty(true);
+    },
+    []
+  );
+
+  const insertCurvePoint = useCallback(
+    (relationshipId: string, point: { x: number; y: number }, insertIndex: number) => {
+      const current = modelRef.current.relationships.find((rel) => rel.id === relationshipId);
+      const existingLen = current?.curvePoints?.length ?? 0;
+      if (existingLen >= 5) {
+        setErrorModal({
+          title: "无法添加控制点",
+          issues: [
+            {
+              message: "控制点不能超过 5 个",
+              fieldPath: "relationships[].curvePoints",
+              id: relationshipId,
+              suggestion: "请先删除一个控制点再添加",
+            },
+          ],
+          secondaryAction: { label: "关闭", onClick: () => setErrorModal(null) },
+        });
+        return;
+      }
+
+      setModel((prev) => {
+        const target = prev.relationships.find((rel) => rel.id === relationshipId);
+        if (!target) return prev;
+
+        const existing = target.curvePoints ?? [];
+        if (existing.length >= 5) return prev;
+
+        const nextIndex = Math.max(0, Math.min(existing.length, insertIndex));
+        const nextPoints = [
+          ...existing.slice(0, nextIndex),
+          { x: point.x, y: point.y },
+          ...existing.slice(nextIndex),
+        ];
+
+        return {
+          ...prev,
+          relationships: prev.relationships.map((rel) =>
+            rel.id === relationshipId ? { ...rel, curvePoints: nextPoints } : rel
+          ),
+        };
+      });
+      setDirty(true);
+    },
+    []
+  );
+
+  const deleteCurvePoint = useCallback((relationshipId: string, pointIndex: number) => {
+    let changed = false;
+    setModel((prev) => {
+      const target = prev.relationships.find((rel) => rel.id === relationshipId);
+      if (!target?.curvePoints || target.curvePoints.length === 0) return prev;
+
+      if (pointIndex < 0 || pointIndex >= target.curvePoints.length) return prev;
+      const nextPoints = target.curvePoints.filter((_, index) => index !== pointIndex);
+      changed = true;
+
+      return {
+        ...prev,
+        relationships: prev.relationships.map((rel) =>
+          rel.id === relationshipId ? { ...rel, curvePoints: nextPoints } : rel
+        ),
+      };
+    });
+
+    if (changed) setDirty(true);
+  }, []);
+
+  const moveCurvePoint = useCallback(
+    (relationshipId: string, pointIndex: number, point: { x: number; y: number }) => {
+      let changed = false;
+      setModel((prev) => {
+        const target = prev.relationships.find((rel) => rel.id === relationshipId);
+        if (!target?.curvePoints || target.curvePoints.length === 0) return prev;
+        if (pointIndex < 0 || pointIndex >= target.curvePoints.length) return prev;
+
+        const nextPoints = target.curvePoints.map((p, index) =>
+          index === pointIndex ? { x: point.x, y: point.y } : p
+        );
+        changed = true;
+
+        return {
+          ...prev,
+          relationships: prev.relationships.map((rel) =>
+            rel.id === relationshipId ? { ...rel, curvePoints: nextPoints } : rel
+          ),
+        };
+      });
+
+      if (changed) setDirty(true);
     },
     []
   );
@@ -607,6 +705,9 @@ function App() {
             onReconnectRelationship={reconnectRelationship}
             onDeselect={handleDeselect}
             onConnect={handleConnect}
+            onInsertCurvePoint={insertCurvePoint}
+            onDeleteCurvePoint={deleteCurvePoint}
+            onMoveCurvePoint={moveCurvePoint}
           />
           <SidePanel
             objects={model.objects}

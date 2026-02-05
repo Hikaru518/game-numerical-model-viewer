@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
-  EdgeLabelRenderer,
   MarkerType,
   type Connection,
   type Node,
@@ -40,13 +39,17 @@ type CanvasProps = {
   onReconnectRelationship: (edgeId: string, connection: Connection) => boolean;
   onDeselect: () => void;
   onConnect: (connection: Connection) => void;
-};
-
-type HoveredEdge = {
-  id: string;
-  x: number;
-  y: number;
-  relationship: Relationship;
+  onInsertCurvePoint: (
+    relationshipId: string,
+    point: { x: number; y: number },
+    insertIndex: number
+  ) => void;
+  onDeleteCurvePoint: (relationshipId: string, pointIndex: number) => void;
+  onMoveCurvePoint: (
+    relationshipId: string,
+    pointIndex: number,
+    point: { x: number; y: number }
+  ) => void;
 };
 
 const nodeTypes = { objectNode: ObjectNode };
@@ -66,6 +69,25 @@ type ContextMenuState =
   | {
       kind: "object";
       objectId: string;
+      left: number;
+      top: number;
+      clientX: number;
+      clientY: number;
+    }
+  | {
+      kind: "curvePoint";
+      relationshipId: string;
+      pointIndex: number;
+      left: number;
+      top: number;
+      clientX: number;
+      clientY: number;
+    }
+  | {
+      kind: "edge";
+      relationshipId: string;
+      point: { x: number; y: number };
+      insertIndex: number;
       left: number;
       top: number;
       clientX: number;
@@ -94,8 +116,10 @@ const Canvas = ({
   onReconnectRelationship,
   onDeselect,
   onConnect,
+  onInsertCurvePoint,
+  onDeleteCurvePoint,
+  onMoveCurvePoint,
 }: CanvasProps) => {
-  const [hoveredEdge, setHoveredEdge] = useState<HoveredEdge | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -132,34 +156,55 @@ const Canvas = ({
     };
   }, [contextMenu, creatingRelationship, onCancelCreateRelationship]);
 
-  const openContextMenu = (
-    next:
-      | { kind: "pane"; clientX: number; clientY: number }
-      | { kind: "object"; objectId: string; clientX: number; clientY: number }
-  ) => {
-    const shell = shellRef.current;
-    const bounds = shell?.getBoundingClientRect();
-    const left = bounds ? next.clientX - bounds.left : next.clientX;
-    const top = bounds ? next.clientY - bounds.top : next.clientY;
-    setContextMenu({ ...next, left, top });
-  };
+  const openContextMenu = useCallback(
+    (
+      next:
+        | { kind: "pane"; clientX: number; clientY: number }
+        | { kind: "object"; objectId: string; clientX: number; clientY: number }
+        | {
+            kind: "curvePoint";
+            relationshipId: string;
+            pointIndex: number;
+            clientX: number;
+            clientY: number;
+          }
+        | {
+            kind: "edge";
+            relationshipId: string;
+            point: { x: number; y: number };
+            insertIndex: number;
+            clientX: number;
+            clientY: number;
+          }
+    ) => {
+      const shell = shellRef.current;
+      const bounds = shell?.getBoundingClientRect();
+      const left = bounds ? next.clientX - bounds.left : next.clientX;
+      const top = bounds ? next.clientY - bounds.top : next.clientY;
+      setContextMenu({ ...next, left, top });
+    },
+    []
+  );
 
-  const resolveFlowPosition = (clientX: number, clientY: number) => {
+  const resolveFlowPosition = useCallback((clientX: number, clientY: number) => {
     const bounds = shellRef.current?.getBoundingClientRect();
-    const local = bounds ? { x: clientX - bounds.left, y: clientY - bounds.top } : { x: clientX, y: clientY };
+    const local = bounds
+      ? { x: clientX - bounds.left, y: clientY - bounds.top }
+      : { x: clientX, y: clientY };
     const instance = flowInstanceRef.current as unknown as {
       screenToFlowPosition?: (pos: { x: number; y: number }) => { x: number; y: number };
       project?: (pos: { x: number; y: number }) => { x: number; y: number };
     } | null;
 
     if (instance?.screenToFlowPosition) {
+      // ReactFlow expects viewport (client) coordinates for screenToFlowPosition.
       return instance.screenToFlowPosition({ x: clientX, y: clientY });
     }
     if (instance?.project) {
       return instance.project(local);
     }
     return local;
-  };
+  }, []);
 
   const nodes = useMemo<Node[]>(
     () =>
@@ -204,20 +249,49 @@ const Canvas = ({
             relationship,
             isSelected,
             isAdjacent,
-            onHover: (
-              id: string | null,
-              coords?: { x: number; y: number }
+            resolveFlowPosition,
+            onMoveCurvePoint,
+            onRequestEdgeContextMenu: (params: {
+              relationshipId: string;
+              point: { x: number; y: number };
+              insertIndex: number;
+              clientX: number;
+              clientY: number;
+            }) => {
+              openContextMenu({
+                kind: "edge",
+                relationshipId: params.relationshipId,
+                point: params.point,
+                insertIndex: params.insertIndex,
+                clientX: params.clientX,
+                clientY: params.clientY,
+              });
+            },
+            onRequestCurvePointContextMenu: (
+              relationshipId: string,
+              pointIndex: number,
+              clientX: number,
+              clientY: number
             ) => {
-              if (!id || !coords) {
-                setHoveredEdge(null);
-                return;
-              }
-              setHoveredEdge({ id, x: coords.x, y: coords.y, relationship });
+              openContextMenu({
+                kind: "curvePoint",
+                relationshipId,
+                pointIndex,
+                clientX,
+                clientY,
+              });
             },
           },
         };
       }),
-    [adjacentRelationshipIds, relationships, selection]
+    [
+      adjacentRelationshipIds,
+      openContextMenu,
+      onMoveCurvePoint,
+      relationships,
+      resolveFlowPosition,
+      selection,
+    ]
   );
 
   return (
@@ -297,27 +371,6 @@ const Canvas = ({
       >
         <Background color="#CBD5E1" gap={16} />
         <Controls position="bottom-left" />
-        <EdgeLabelRenderer>
-          {hoveredEdge && (
-            <div
-              className="edge-tooltip"
-              style={{
-                transform: `translate(-50%, -110%) translate(${hoveredEdge.x}px, ${hoveredEdge.y}px)`,
-              }}
-            >
-              <div className="edge-tooltip-title">{hoveredEdge.relationship.name}</div>
-              {hoveredEdge.relationship.label && (
-                <div className="edge-tooltip-label">
-                  label：{hoveredEdge.relationship.label}
-                </div>
-              )}
-              <div className="edge-tooltip-desc">
-                {hoveredEdge.relationship.description ||
-                  "Hover 在线上可预览；点击后在右侧编辑。"}
-              </div>
-            </div>
-          )}
-        </EdgeLabelRenderer>
       </ReactFlow>
       {contextMenu && (
         <div
@@ -341,7 +394,7 @@ const Canvas = ({
             >
               新建 Object
             </button>
-          ) : (
+          ) : contextMenu.kind === "object" ? (
             <button
               className="context-menu-item"
               role="menuitem"
@@ -351,6 +404,32 @@ const Canvas = ({
               }}
             >
               新建 Relationship
+            </button>
+          ) : contextMenu.kind === "curvePoint" ? (
+            <button
+              className="context-menu-item"
+              role="menuitem"
+              onClick={() => {
+                onDeleteCurvePoint(contextMenu.relationshipId, contextMenu.pointIndex);
+                closeContextMenu();
+              }}
+            >
+              删除控制点
+            </button>
+          ) : (
+            <button
+              className="context-menu-item"
+              role="menuitem"
+              onClick={() => {
+                onInsertCurvePoint(
+                  contextMenu.relationshipId,
+                  contextMenu.point,
+                  contextMenu.insertIndex
+                );
+                closeContextMenu();
+              }}
+            >
+              添加控制点
             </button>
           )}
         </div>

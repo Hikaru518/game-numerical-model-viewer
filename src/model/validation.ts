@@ -29,6 +29,9 @@ const pushIssue = (
   issues.push({ message, fieldPath, id, suggestion });
 };
 
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
 export const validateModel = (data: unknown): ValidationResult => {
   const issues: ValidationIssue[] = [];
 
@@ -158,6 +161,7 @@ export const validateModel = (data: unknown): ValidationResult => {
       const toHandle = rel.toHandle;
       const arrowType = rel.arrowType;
       const label = rel.label;
+      const curvePoints = rel.curvePoints;
 
       if (typeof id !== "string" || id.trim().length === 0) {
         pushIssue(issues, "Relationship.id 必须为非空字符串", `${basePath}.id`);
@@ -258,6 +262,53 @@ export const validateModel = (data: unknown): ValidationResult => {
           id as string
         );
       }
+
+      if (typeof curvePoints !== "undefined") {
+        if (!Array.isArray(curvePoints)) {
+          pushIssue(
+            issues,
+            "Relationship.curvePoints 必须为数组",
+            `${basePath}.curvePoints`,
+            id as string,
+            "请删除该字段或提供控制点数组（最多 5 个）"
+          );
+        } else {
+          if (curvePoints.length > 5) {
+            pushIssue(
+              issues,
+              "Relationship.curvePoints 不能超过 5 个",
+              `${basePath}.curvePoints`,
+              id as string,
+              "请删除多余控制点（最多 5 个）"
+            );
+          }
+
+          curvePoints.forEach((point, pointIndex) => {
+            const pointPath = `${basePath}.curvePoints[${pointIndex}]`;
+            if (!isObject(point)) {
+              pushIssue(issues, "curvePoint 必须为对象", pointPath, id as string);
+              return;
+            }
+
+            if (!isFiniteNumber(point.x)) {
+              pushIssue(
+                issues,
+                "curvePoint.x 必须为有限数字",
+                `${pointPath}.x`,
+                id as string
+              );
+            }
+            if (!isFiniteNumber(point.y)) {
+              pushIssue(
+                issues,
+                "curvePoint.y 必须为有限数字",
+                `${pointPath}.y`,
+                id as string
+              );
+            }
+          });
+        }
+      }
     });
   }
 
@@ -326,5 +377,6 @@ export const coerceModel = (data: ModelData): ModelData => ({
         : "left",
     arrowType: rel.arrowType ?? "single",
     label: rel.label ?? "",
+    curvePoints: rel.curvePoints,
   })),
 });

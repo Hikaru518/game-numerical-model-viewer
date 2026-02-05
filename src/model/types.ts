@@ -15,6 +15,11 @@ export type ObjectEntity = {
   attributes: Attribute[];
 };
 
+export type CurvePoint = {
+  x: number;
+  y: number;
+};
+
 export type Relationship = {
   id: string;
   name: string;
@@ -25,6 +30,11 @@ export type Relationship = {
   toHandle?: HandleLocation;
   arrowType: ArrowType;
   label: string;
+  /**
+   * User-defined curve control points (0..5).
+   * The implicit endpoints are derived from fromId/toId node positions.
+   */
+  curvePoints?: CurvePoint[];
 };
 
 export type ModelData = {
